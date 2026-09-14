@@ -2,8 +2,13 @@
   "schemaVersion": 1,
   "kind": "real-harness-product-entry-with-deterministic-fixture",
   "realApi": false,
-  "pluginVersion": "0.1.8",
-  "artifactSha256": "d738d7e28d5e0b4c0de376e81778fb045b3d50d9ca9283efb84d3cb4e5540408",
+  "pluginVersion": "0.1.9",
+  "artifactSha256": "1094c9fae16f7ff94164cba70bcb2160837978d31014b79537d3f00c1f12e464",
+  "packToolchain": {
+    "node": "24.20.0",
+    "npm": "11.19.0",
+    "note": "Packed from the frozen tree with the publish workflow toolchain; the CI tarball hash was reproduced byte-for-byte before tagging, and every acceptance below ran on this exact artifact."
+  },
   "workspace": "/tmp (existing workspace; /private/tmp is the macOS alias)",
   "doctorRegressionTests": {
     "passed": 7,
@@ -21,55 +26,50 @@
       "passed": true,
       "assertions": 22,
       "cohortPackages": 231,
-      "artifactFilesCompared": 69,
+      "artifactFilesCompared": 70,
       "nodeVersion": "v26.7.0",
       "platform": "darwin",
-      "reportSha256": "355e4e3bcba9861051c310c5792a2d4c4ad29174a1a696dceb11d082d5005779",
-      "artifactSha256": "d738d7e28d5e0b4c0de376e81778fb045b3d50d9ca9283efb84d3cb4e5540408"
+      "reportSha256": "69be6cf147320dd91b3cd9eb9e5c8b9377af87ef43358b78ef46918abf2068cc"
     },
     {
       "hostVersion": "0.1.2-rc.1",
       "passed": true,
       "assertions": 22,
       "cohortPackages": 214,
-      "artifactFilesCompared": 69,
+      "artifactFilesCompared": 70,
       "nodeVersion": "v26.7.0",
       "platform": "darwin",
-      "reportSha256": "55598249f7ee283aa184c7e648e65cb97a5137950dad53fe5ab0ee0b77029d8d",
-      "artifactSha256": "d738d7e28d5e0b4c0de376e81778fb045b3d50d9ca9283efb84d3cb4e5540408"
+      "reportSha256": "1f422d4c00e32ef9b4e057a54156bbedb52a94ddfc9d8b4c5dea708513613e7b"
     },
     {
       "hostVersion": "0.1.2-alpha.5",
       "passed": true,
       "assertions": 22,
       "cohortPackages": 214,
-      "artifactFilesCompared": 69,
+      "artifactFilesCompared": 70,
       "nodeVersion": "v26.7.0",
       "platform": "darwin",
-      "reportSha256": "ccce165e39e6adced04036bfd871fd240f217d2d5b3c8a6868eabfbf431ab745",
-      "artifactSha256": "d738d7e28d5e0b4c0de376e81778fb045b3d50d9ca9283efb84d3cb4e5540408"
+      "reportSha256": "61dd48571ca5e9d93abe4532eaca707095033b3f236773cb37d03a247f4554ff"
     },
     {
       "hostVersion": "0.1.2-alpha.3",
       "passed": true,
       "assertions": 22,
       "cohortPackages": 215,
-      "artifactFilesCompared": 69,
+      "artifactFilesCompared": 70,
       "nodeVersion": "v26.7.0",
       "platform": "darwin",
-      "reportSha256": "e2954e46a1465b476ec85ed2aba1c812e7ba0378ad05f653bf33d03f9292fc48",
-      "artifactSha256": "d738d7e28d5e0b4c0de376e81778fb045b3d50d9ca9283efb84d3cb4e5540408"
+      "reportSha256": "c6877780098b19940be19d30e6b8f481396bb6eb11accdf49e3d0ddbadc0b0ac"
     },
     {
       "hostVersion": "0.1.2-alpha.2",
       "passed": true,
       "assertions": 22,
       "cohortPackages": 215,
-      "artifactFilesCompared": 69,
+      "artifactFilesCompared": 70,
       "nodeVersion": "v26.7.0",
       "platform": "darwin",
-      "reportSha256": "5f8491f3eaff8ad2f03b7719c9c8d2bb2885193b4ee027b6ba28d96d3dbd81a8",
-      "artifactSha256": "d738d7e28d5e0b4c0de376e81778fb045b3d50d9ca9283efb84d3cb4e5540408"
+      "reportSha256": "1e02f104c03c4bcc0d38eccbe1bf30c5af14a21897330cb6119850f81c6b3ccc"
     }
   ],
   "coverage": [
@@ -83,11 +83,11 @@
     "real child session inherits Auto; child cannot widen permissions",
     "side effects verified outside the model; normal exit and no remaining process group"
   ],
+  "hostNote": "Harness 0.1.5-rc.1 is the npm latest and the recommended host; the four 0.1.2 hosts remain regression-tested. The 0.1.5-rc.1 cohort adds 17 packages and drops 4 compared with 0.1.2-rc.1, so the full override list was regenerated from the resolved closure instead of re-versioned in place.",
   "unverified": [
     "real provider APIs (see real-api.json)",
-    "browser interactions",
+    "browser interactions (see web.json)",
     "PowerShell and Windows sandbox",
     "live user-data migrations"
-  ],
-  "hostNote": "Harness 0.1.5-rc.1 is the npm latest and the recommended host; the four 0.1.2 hosts remain regression-tested. The 0.1.5-rc.1 cohort adds 17 packages and drops 4 compared with 0.1.2-rc.1, so the full override list was regenerated from the resolved closure instead of re-versioned in place."
+  ]
 }

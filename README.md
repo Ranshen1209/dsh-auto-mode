@@ -19,15 +19,15 @@ Coding agents need broad access to build, test, and inspect a project without st
 `dsh-auto-mode` adds the missing middle ground. Routine project work runs directly inside the official `workspace-write` sandbox, only semantic risks outside that boundary are classified using the current DSH model and the direct user's instructions, genuine ambiguity asks once, and destructive access to critical paths is denied before execution.
 
 > [!IMPORTANT]
-> Plugin `0.1.8` supports the exact Harness versions below. The recommended host is `0.1.5-rc.1`, the current npm `latest`; it is still a host prerelease. Earlier plugin releases declared support only up to `0.1.2-rc.1`, which is why installing on `0.1.5-rc.1` failed. Updating the plugin does not upgrade the running host. Mixed DSH dependency cohorts are unsupported.
+> Plugin `0.1.9` supports the exact Harness versions below. The recommended host is `0.1.5-rc.1`, the current npm `latest`; it is still a host prerelease. Earlier plugin releases declared support only up to `0.1.2-rc.1`, which is why installing on `0.1.5-rc.1` failed. Updating the plugin does not upgrade the running host. Mixed DSH dependency cohorts are unsupported.
 
 | Harness host | Plugin | Pair |
 | --- | --- | --- |
-| `0.1.5-rc.1` | `0.1.8` | Recommended |
-| `0.1.2-rc.1` | `0.1.8` | Retained compatibility |
-| `0.1.2-alpha.5` | `0.1.8` | Retained compatibility |
-| `0.1.2-alpha.3` | `0.1.8` | Retained compatibility |
-| `0.1.2-alpha.2` | `0.1.8` | Retained compatibility |
+| `0.1.5-rc.1` | `0.1.9` | Recommended |
+| `0.1.2-rc.1` | `0.1.9` | Retained compatibility |
+| `0.1.2-alpha.5` | `0.1.9` | Retained compatibility |
+| `0.1.2-alpha.3` | `0.1.9` | Retained compatibility |
+| `0.1.2-alpha.2` | `0.1.9` | Retained compatibility |
 | `0.1.1-rc.2` | Historical `0.1.5` | Unsupported by `0.1.6` and later; migrate to a pair above for redundant sandbox recovery |
 | Other versions | Undeclared | Require full host validation first |
 

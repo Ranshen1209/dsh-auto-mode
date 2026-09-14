@@ -3,17 +3,17 @@
   "provider": "deepseek-official",
   "model": "deepseek-flash",
   "workspace": "/tmp",
-  "pluginVersion": "0.1.8",
-  "artifactSha256": "d738d7e28d5e0b4c0de376e81778fb045b3d50d9ca9283efb84d3cb4e5540408",
-  "note": "Harness 0.1.5-rc.1 removed str_replace_editor from the base composition; the acceptance profile mounts the official @deepseek-ai/dsh-tool-str-replace-editor package explicitly so the native-editor scenario keeps exercising the real tool. The model id is read from the running host settings instead of a hard-coded deepseek-v4-flash.",
+  "pluginVersion": "0.1.9",
+  "artifactSha256": "1094c9fae16f7ff94164cba70bcb2160837978d31014b79537d3f00c1f12e464",
+  "note": "Harness 0.1.5-rc.1 removed str_replace_editor from the base composition; the acceptance profile mounts the official @deepseek-ai/dsh-tool-str-replace-editor package explicitly so the native-editor scenario keeps exercising the real tool. The model id is read from the running host settings instead of a hard-coded deepseek-v4-flash. The redundant-sandbox scenario is stochastic: the model must volunteer sandbox_permissions \"workspace-write\" on its first attempt, so the driver retries the scenario up to three times and only a run that records an exercised recovery is reported here.",
   "reports": [
     {
       "target": "rc1",
       "host": "0.1.5-rc.1",
-      "artifactSha256": "d738d7e28d5e0b4c0de376e81778fb045b3d50d9ca9283efb84d3cb4e5540408",
+      "artifactSha256": "1094c9fae16f7ff94164cba70bcb2160837978d31014b79537d3f00c1f12e464",
       "passed": true,
       "requests": 20,
-      "totalTokens": 117424,
+      "totalTokens": 118339,
       "classifierRequests": 3,
       "agentRequests": 17,
       "agentRequestsWithAutoGuidance": 13,
@@ -150,8 +150,9 @@
     "Auto boundary guidance present on every agent request (title-generation calls excluded)",
     "untouched sibling sentinel preserved"
   ],
+  "provenance": "Runs against this artifact: three consecutive headless runs all passed and all exercised the redundant-sandbox recovery; the reported run is one of them.",
   "unverified": [
-    "browser interactions",
+    "browser interactions (see web.json)",
     "PowerShell and Windows sandbox",
     "live user-data migrations"
   ]

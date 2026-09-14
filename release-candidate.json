@@ -1,9 +1,9 @@
 {
-  "version": "0.1.8",
-  "artifactSha256": "d738d7e28d5e0b4c0de376e81778fb045b3d50d9ca9283efb84d3cb4e5540408",
-  "node": "26.7.0",
+  "version": "0.1.9",
+  "artifactSha256": "1094c9fae16f7ff94164cba70bcb2160837978d31014b79537d3f00c1f12e464",
+  "node": "24.20.0",
   "npm": "11.19.0",
-  "verifiedAt": "2026-09-14T01:20:00.000Z",
+  "verifiedAt": "2026-09-14T02:00:00.000Z",
   "realApiPassed": true,
   "realApiProvider": "deepseek-official",
   "realApiModel": "deepseek-flash",
@@ -17,9 +17,10 @@
     "0.1.2-alpha.2"
   ],
   "evidence": [
-    "validation/0.1.8/fixture.json",
-    "validation/0.1.8/real-api.json",
-    "validation/0.1.8/web.json"
+    "validation/0.1.9/fixture.json",
+    "validation/0.1.9/real-api.json",
+    "validation/0.1.9/web.json"
   ],
+  "packReproducedInCi": true,
   "adversarialReview": "host surface unchanged across the supported range; differences confined to the dependency cohort, default tool composition and default model id; see VALIDATION.md for scope"
 }

@@ -1,6 +1,6 @@
 # Auto Mode 适配 DeepSeek Harness 0.1.5-rc.1
 
-日期：2026-09-14。目标宿主：`0.1.5-rc.1`（npm `latest`）。产出：插件 `0.1.8`。
+日期：2026-09-14。目标宿主：`0.1.5-rc.1`（npm `latest`）。产出：插件 `0.1.9`。
 
 ## 背景
 
@@ -48,19 +48,37 @@ npm `latest` 的 Harness 已经是 `0.1.5-rc.1`，但 Auto Mode `0.1.7` 的 `com
 | `verify-maintenance`（5 个精确宿主 + 120 个 skill 文件哈希） | 通过 |
 | `harness-doctor.test.mjs` | 7 项通过 |
 | 精确 cohort fixture，五个宿主各 22 项断言 | 全部通过；`0.1.5-rc.1` 闭包 231 包，69 个打包文件逐字节比对 |
-| 真实 API，`0.1.5-rc.1` headless | 30 项检查通过，20 次请求；真实 `str_replace_editor`、授权删除、冗余沙箱拒绝 + 无字段重试、分类器拒绝与抗注入 |
-| 真实 API，`0.1.5-rc.1` Web（Ego Lite 真实浏览器） | 会话由 UI 创建，3 次 `bash` + 1 次真实分类器请求，授权删除生效、兄弟文件未受影响、无手工审批；菜单/风险弹窗中文，确认按钮受勾选门控，取消不切换，刷新后 Auto 与图标保留 |
-| 真实 API，`0.1.2-rc.1` | 23 次请求全部检查通过 |
+| 真实 API，`0.1.5-rc.1` headless | 30 项检查通过，19 次请求；真实 `str_replace_editor`、授权删除、冗余沙箱拒绝 + 无字段重试、分类器拒绝与抗注入 |
+| 真实 API，`0.1.5-rc.1` Web（Ego Lite 真实浏览器） | 会话由 UI 创建，`bash` + 1 次真实分类器请求，授权删除生效、兄弟文件未受影响、无手工审批；菜单/风险弹窗中文，确认按钮受勾选门控，取消不切换，刷新后 Auto 与图标保留 |
+| 真实 API，`0.1.2-rc.1` | 23 次请求全部检查通过（在上一份候选产物上测得；与发布产物仅差版本字符串与 README 文本） |
 | 真实 API，`0.1.2-alpha.5` / `0.1.2-alpha.3` / `0.1.2-alpha.2` | 未在本机重跑真实 API；fixture 与 CI 矩阵覆盖 |
-| 用户报障复现与修复确认 | `0.1.7` 在 `0.1.5-rc.1` 上 `plugin tree failed to load: ... unsupported or mixed Harness packages`；`0.1.8` 同 profile 正常加载 |
+| 用户报障复现与修复确认 | `0.1.7` 在 `0.1.5-rc.1` 上 `plugin tree failed to load: ... unsupported or mixed Harness packages`；修复后同 profile 正常加载 |
 
-证据见 [validation/0.1.8/fixture.json](../../validation/0.1.8/fixture.json)、[validation/0.1.8/real-api.json](../../validation/0.1.8/real-api.json)、[validation/0.1.8/web.json](../../validation/0.1.8/web.json) 与 [VALIDATION.md](../../VALIDATION.md)。
+`v0.1.8` 标签因候选哈希与 CI 产物不一致而未发布（见下节），因此上述接受的产物重新打包为 `0.1.9`：五个宿主 fixture 与 `0.1.5-rc.1` 的 headless + 浏览器验收都在 `0.1.9` 的这一份字节上重跑通过。
+
+证据见 [validation/0.1.9/fixture.json](../../validation/0.1.9/fixture.json)、[validation/0.1.9/real-api.json](../../validation/0.1.9/real-api.json)、[validation/0.1.9/web.json](../../validation/0.1.9/web.json) 与 [VALIDATION.md](../../VALIDATION.md)。
 
 ## 未验证
 
 - PowerShell 与 Windows ACL 验收（走 CI 矩阵）。
 - 真实用户数据迁移（本次不涉及 session 格式变更）。
 - `0.1.5-rc.2` 与 `0.1.5-alpha.2`。宿主升级到这两个版本时，需要重新走一遍本流程。
+
+## 候选产物必须与 CI 同工具链打包
+
+`release-candidate.json` 的 `artifactSha256` 会被 `publish` 作业用 `npm pack --ignore-scripts` 的产物逐字节校验，而这个哈希对工具链和输入文件都敏感。建 `v0.1.8` 标签时踩到两点：验收用的 tarball 是在最后一次改 README **之前**打的，且用的是本机 Node 26。CI 用 Node 24.20.0（`setup-node: '24'` 当前解析到该版本），两者产物不同，`verify-release-artifact` 失败，npm 未发布。
+
+结论：**先冻结所有进入 npm 包的文件，再用 Node 24.20.0 + npm 11.19.0 打包，并对这一份产物跑验收**。本机复现 CI 哈希：
+
+```sh
+curl -fsSL https://nodejs.org/dist/v24.20.0/node-v24.20.0-darwin-arm64.tar.gz | tar -xz -C /tmp/node24 --strip-components=1
+PATH=/tmp/node24/bin:$PATH pnpm build
+PATH=/tmp/node24/bin:$PATH npm pack --ignore-scripts --pack-destination /tmp/pack
+```
+
+`files[]` 之外的文件（`release-candidate.json`、`VALIDATION.md`、`validation/`、`RELEASE_NOTES.md`、`scripts/`）改动不影响哈希；`files[]` 之内的（含 `docs/`、`README*.md`、`compatibility.json`、`lib/`）任何改动都会让哈希失效。
+
+因为 `v0.1.8` 的 tag 已推送而其元数据无法与 CI 产物对齐，按项目规则不重打已推送的 tag，改为直接发 `0.1.9`。
 
 ## 一个容易误判的点
 
