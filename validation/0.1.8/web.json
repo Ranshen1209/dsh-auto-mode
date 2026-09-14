@@ -1,0 +1,34 @@
+{
+  "autoAfterReload": true,
+  "iconAfterReload": true,
+  "confirmed": true,
+  "cancelKeptPreset": true,
+  "acknowledgementGated": true,
+  "idle": true,
+  "targetRemoved": true,
+  "siblingPreserved": true,
+  "classifierRequested": true,
+  "realUsage": true,
+  "noProviderError": true,
+  "agentRequests": 5,
+  "classifierRequests": 1,
+  "provider": "deepseek-official",
+  "model": "deepseek-flash",
+  "workspace": "/tmp",
+  "host": "0.1.5-rc.1",
+  "artifactSha256": "d738d7e28d5e0b4c0de376e81778fb045b3d50d9ca9283efb84d3cb4e5540408",
+  "clientBundleSha256": "8d819f5983c62e8cfde06aa146ff6250495212dbc4436fad9afc43f370bec62a",
+  "uiChecks": {
+    "localizedMenuLabel": "访问模式，当前：自动审批",
+    "menuOptionsChinese": [
+      "仅可查看",
+      "工作区内修改",
+      "自动审批",
+      "完全权限"
+    ],
+    "riskDialogChinese": true,
+    "confirmDisabledUntilAcknowledged": true,
+    "autoMarkerOnTrigger": true
+  },
+  "note": "Driven through the real Web UI in Ego Lite. The web profile composes agent-plane tools from the standard agent preset, so a driver-created agent does not see them; the workspace was registered by scripts/acceptance/web-observer.mjs and the session was created from the UI, matching the 0.1.7 web evidence method."
+}

@@ -9,7 +9,7 @@
 <p align="center">
   <a href="https://www.npmjs.com/package/@nanmicoder/dsh-auto-mode"><img src="https://img.shields.io/npm/v/@nanmicoder/dsh-auto-mode.svg" alt="npm version"></a>
   <a href="./LICENSE"><img src="https://img.shields.io/npm/l/@nanmicoder/dsh-auto-mode.svg" alt="MIT license"></a>
-  <img src="https://img.shields.io/badge/DeepSeek%20Harness-0.1.2--rc.1-202724" alt="See installation instructions for exact host compatibility">
+  <img src="https://img.shields.io/badge/DeepSeek%20Harness-0.1.5--rc.1-202724" alt="See installation instructions for exact host compatibility">
 </p>
 
 ## Why Auto?
@@ -19,28 +19,29 @@ Coding agents need broad access to build, test, and inspect a project without st
 `dsh-auto-mode` adds the missing middle ground. Routine project work runs directly inside the official `workspace-write` sandbox, only semantic risks outside that boundary are classified using the current DSH model and the direct user's instructions, genuine ambiguity asks once, and destructive access to critical paths is denied before execution.
 
 > [!IMPORTANT]
-> Plugin `0.1.7` supports the exact Harness versions below. The recommended host is `0.1.2-rc.1`, which remains a host prerelease. Updating the plugin does not upgrade the running host. Mixed DSH dependency cohorts are unsupported.
+> Plugin `0.1.8` supports the exact Harness versions below. The recommended host is `0.1.5-rc.1`, the current npm `latest`; it is still a host prerelease. Earlier plugin releases declared support only up to `0.1.2-rc.1`, which is why installing on `0.1.5-rc.1` failed. Updating the plugin does not upgrade the running host. Mixed DSH dependency cohorts are unsupported.
 
 | Harness host | Plugin | Pair |
 | --- | --- | --- |
-| `0.1.2-rc.1` | `0.1.7` | Recommended |
-| `0.1.2-alpha.5` | `0.1.7` | Compatible |
-| `0.1.2-alpha.3` | `0.1.7` | Retained compatibility |
-| `0.1.2-alpha.2` | `0.1.7` | Retained compatibility |
-| `0.1.1-rc.2` | Historical `0.1.5` | Unsupported by `0.1.6`/`0.1.7`; migrate to a pair above for redundant sandbox recovery |
+| `0.1.5-rc.1` | `0.1.8` | Recommended |
+| `0.1.2-rc.1` | `0.1.8` | Retained compatibility |
+| `0.1.2-alpha.5` | `0.1.8` | Retained compatibility |
+| `0.1.2-alpha.3` | `0.1.8` | Retained compatibility |
+| `0.1.2-alpha.2` | `0.1.8` | Retained compatibility |
+| `0.1.1-rc.2` | Historical `0.1.5` | Unsupported by `0.1.6` and later; migrate to a pair above for redundant sandbox recovery |
 | Other versions | Undeclared | Require full host validation first |
 
-[compatibility.json](./compatibility.json) defines the exact matrix. See the [maintenance record](./docs/maintenance-2026-09-06/README.md) for diagnosis, migration and fixes, and the [historical Alpha acceptance report](./docs/alpha2-acceptance.md) for earlier evidence.
+[compatibility.json](./compatibility.json) defines the exact matrix. See the [maintenance record](./docs/maintenance-2026-09-06/README.md) for earlier diagnosis and fixes, the [0.1.5-rc.1 upgrade record](./docs/harness-0.1.5-rc.1-upgrade-2026-09-14/README.md) for this release, and the [historical Alpha acceptance report](./docs/alpha2-acceptance.md) for older evidence.
 
 ### npm
 
-Check the actually running `dsh --version`, then install the exact plugin:
+Check the actually running `dsh --version`, then install the plugin:
 
 ```sh
-dsh plugin --profile web add --save-exact @nanmicoder/dsh-auto-mode@0.1.7
+dsh plugin --profile web add @nanmicoder/dsh-auto-mode
 ```
 
-`latest` carries stable plugin releases; `next` carries plugin prereleases. Neither tag implies arbitrary host compatibility. Git source installs build through `prepare` and require development dependencies and enabled install scripts. Registry packages already contain compiled output.
+This resolves npm `latest`, which is always the newest plugin release; pinning is unnecessary because compatibility is decided by the **host** version, and the plugin refuses a host outside the matrix above before the first user turn. `next` carries plugin prereleases. Neither tag implies arbitrary host compatibility. Git source installs build through `prepare` and require development dependencies and enabled install scripts. Registry packages already contain compiled output.
 
 ### Build from source
 

@@ -21,7 +21,10 @@ const version = require('@deepseek-ai/dsh/package.json').version;
 const settings = yaml.parse(readFileSync(join(userDshHome, 'settings.yaml'), 'utf8'));
 let credentials = yaml.parse(readFileSync(join(userDshHome, '.credentials.yaml'), 'utf8'));
 const route = settings['agent-default-model'], provider = settings['llm-deepseek'] ?? {};
-if (route?.provider !== 'deepseek-official' || route?.model !== 'deepseek-v4-flash') throw Error('Unexpected user model route');
+// The model id is a pass-through wire value (Harness 0.1.5-rc.1 renamed the
+// default to `deepseek-flash`), so pin the real provider and require a
+// concrete id instead of a brittle catalog snapshot.
+if (route?.provider !== 'deepseek-official' || typeof route?.model !== 'string' || !route.model.trim()) throw Error('Unexpected user model route');
 const ref = provider.apiKeyEnv ?? 'DEEPSEEK_API_KEY';
 let key = credentials?.refs?.[ref] ?? credentials?.[ref];
 if (typeof key !== 'string' || !key.trim()) key = parseEnv(readFileSync(join(userDshHome, '.env'), 'utf8'))[ref];
@@ -38,6 +41,13 @@ const json = (path, value) => writeFileSync(path, JSON.stringify(value, null, 2)
 json(join(profile, 'package.json'), { name: 'auto-mode-acceptance-profile', version: '0.0.0', private: true, type: 'module', dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', mode === 'web' ? '@deepseek-ai/dsh-web-app' : '@deepseek-ai/dsh-headless', '@nanmicoder/dsh-auto-mode'], patchReload: 'startup' } } });
 const patches = [{ id: 'permission', config: { ...yaml.parse(readFileSync(join(extracted, 'package/cordis.patch.yml'), 'utf8')).find(p => p.id === 'permission').config, defaultPreset: 'auto' } }, { id: 'llm-pi-ai', disabled: true }, { id: 'llm-deepseek', config: providerConfig }, { id: 'agent-default-model', config: route }];
 if (shell === 'pwsh') patches.push({id:'bash-sandbox',disabled:true},{id:'tool-bash',disabled:true},{id:'pwsh-sandbox',disabled:false},{id:'tool-pwsh',disabled:false});
+// Harness 0.1.5-rc.1 dropped str_replace_editor from the base composition.
+// Mount the official package explicitly so the native-editor scenario still
+// exercises the real tool instead of silently degrading to write/edit.
+const basePatch = join(runtime, 'node_modules/@deepseek-ai/dsh-base/cordis.patch.yml');
+if (existsSync(basePatch) && !readFileSync(basePatch, 'utf8').includes('tool-str-replace-editor')) {
+  patches.push({ insert: [{ id: 'tool-str-replace-editor', name: '@deepseek-ai/dsh-tool-str-replace-editor', config: { maxOutputChars: 16000 } }] });
+}
 if (driverArg) {
   copyFileSync(resolve(driverArg), join(profile, 'acceptance-driver.mjs'));
   // Resolve test observer imports from the actual host, never from source deps.
@@ -46,7 +56,7 @@ if (driverArg) {
   patches.push({ insert: [{ id: 'auto-mode-acceptance', name: './acceptance-driver.mjs' }] });
 }
 writeFileSync(join(profile, 'cordis.patch.yml'), yaml.stringify(patches));
-const env = { PATH: process.env.PATH, HOME: join(run,'user-home'), TMPDIR: join(run,'tmp'), LANG: 'en_US.UTF-8', DSH_HOME: home, DSH_TELEMETRY_DISABLED: '1', DSH_PERMISSION_MODE: 'workspace-write', DEEPSEEK_API_KEY: key, AUTO_ACCEPTANCE_DIR: run, AUTO_ACCEPTANCE_VERSION: version, AUTO_ACCEPTANCE_SHELL: shell };
+const env = { PATH: process.env.PATH, HOME: join(run,'user-home'), TMPDIR: join(run,'tmp'), LANG: 'en_US.UTF-8', DSH_HOME: home, DSH_TELEMETRY_DISABLED: '1', DSH_PERMISSION_MODE: 'workspace-write', DEEPSEEK_API_KEY: key, AUTO_ACCEPTANCE_DIR: run, AUTO_ACCEPTANCE_VERSION: version, AUTO_ACCEPTANCE_SHELL: shell, AUTO_ACCEPTANCE_MODEL: route.model };
 const args = [join(runtime, 'node_modules/@deepseek-ai/dsh/lib/bin.js'), '--profile', mode, ...(mode === 'web' ? ['--port', '0', '--no-open'] : [])];
 const child = spawn(process.execPath, args, { cwd: '/tmp', env, stdio: ['ignore','pipe','pipe'] });
 let output = '', announced = false;

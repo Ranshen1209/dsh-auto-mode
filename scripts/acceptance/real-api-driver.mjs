@@ -10,7 +10,10 @@ export const inject = ['agents', 'sessions', 'llm', 'tools'];
 export function apply(ctx) {
   const out = process.env.AUTO_ACCEPTANCE_DIR;
   const pwshOnly = process.env.AUTO_ACCEPTANCE_SHELL === 'pwsh';
-  const route = { provider: 'deepseek-official', model: 'deepseek-v4-flash' };
+  // The runner validates the provider and passes the exact configured model;
+  // Harness 0.1.5-rc.1 renamed the default from deepseek-v4-flash to
+  // deepseek-flash, and the id is a pass-through wire value.
+  const route = { provider: 'deepseek-official', model: process.env.AUTO_ACCEPTANCE_MODEL || 'deepseek-v4-flash' };
   const events = [], checks = [];
   let requests = 0, scenario = '', handle, finished = false;
   const record = data => { const event = { time: Date.now(), scenario, ...data }; events.push(event); appendFileSync(join(out, 'real-api-trace.jsonl'), JSON.stringify(event) + '\n'); };
@@ -18,8 +21,12 @@ export function apply(ctx) {
     const request = ++requests;
     if (request > 65) throw Error('Real API acceptance request limit exceeded');
     const classifier = options.system?.includes('independent security classifier') === true;
+    // The pipeline may deliver the dynamic guidance through the system prompt
+    // or as a leading user message, so probe both with the plugin's own marker.
+    const directText = options.messages.filter(m => m.role === 'user')
+      .flatMap(m => m.content.filter(b => b.type === 'text').map(b => b.text)).join('\n');
     record({ event: 'request', request, classifier, provider: options.provider, model: options.model,
-      hasBoundaryGuidance: options.system?.includes('Auto Mode') === true,
+      hasBoundaryGuidance: (String(options.system ?? '') + directText).includes('<auto_mode_policy>'),
       toolNames: (options.tools ?? []).map(t => t.name) });
     for await (const chunk of next()) {
       if (chunk.type === 'usage') record({ event: 'usage', request, usage: chunk.usage });
@@ -56,6 +63,7 @@ export function apply(ctx) {
     }
     assert(name + ': completed', handle.agent.status === 'idle' && requests > beforeRequests);
     const trace = events.slice(start);
+    assert(name + ': Auto boundary guidance reached the model', trace.some(e => e.event === 'request' && !e.classifier && e.hasBoundaryGuidance));
     assert(name + ': real provider usage', trace.some(e => e.event === 'usage'));
     assert(name + ': no provider failure', !trace.some(e => e.event === 'finish' && ['error','aborted'].includes(e.kind)));
     await verify(trace);

@@ -1,45 +1,42 @@
-# 0.1.7 pre-commit acceptance
+# 0.1.8 acceptance
 
-Production and real API acceptance completed before committing the implementation. Diagnostic and CI fixes were separately reproduced and verified before their commits; the final fixture results below include those fixes. The npm candidate was built with Node **24.20.0** and npm **11.19.0**. Its SHA-256 is:
+Production and real API acceptance completed before this commit. Every run used the existing `/tmp` workspace (macOS resolves it to `/private/tmp`), so no workspace picker was involved. The npm candidate is built from this tree; its SHA-256 is:
 
-`5fb401e32d5cc362d396d4998ae7dd9afb12641ebf5c91eb65c5cef610751173`
+`d738d7e28d5e0b4c0de376e81778fb045b3d50d9ca9283efb84d3cb4e5540408`
 
 ## Automated and product checks
 
 - `pnpm verify`: **190 passed**, five Windows-only tests skipped on macOS; typecheck, server/client build and package contract passed.
-- Maintenance contract: four exact host versions and 99 unchanged upstream skill files verified.
+- Maintenance contract: five exact host versions and 120 unchanged upstream skill files verified.
 - Doctor: **7 tests passed**, including mixed versions, duplicate identities, nested copies, modified module bytes, extra modules, profile metadata and Windows tar CRLF output.
-- Official CLI product fixture: **22 assertions per host**, with all 69 packaged files matched against the same tarball. Alpha.2/Alpha.3 cohorts contain 215 DSH packages; Alpha.5/RC.1 contain 214. Runtime services and actual Session objects share the expected module identity. The model in this suite is explicitly a deterministic fixture.
-- Git source installation without `lib` successfully ran `prepare`, built both entries, and installed; a clean tarball consumer installed prebuilt entries without a build. The unbuilt control reproduced missing-entry failure.
-- Release metadata probes: 13 passed. Artifact gate probes: 6 passed. Actions syntax validated with actionlint.
+- Official CLI product fixture: **22 assertions per host on all five hosts**, with all 69 packaged files matched against the same tarball. `0.1.5-rc.1` resolves a 231-package DSH cohort; the `0.1.2.*` hosts resolve 214/215. Runtime services and actual Session objects share the expected module identity. The model in this suite is explicitly a deterministic fixture.
 
-[Product fixture evidence](validation/0.1.7/fixture.json)
+[Product fixture evidence](validation/0.1.8/fixture.json)
 
 ## Real API in Harness
 
-Every run used the configured real `deepseek-official / deepseek-v4-flash` provider, through the actual Harness process. Agent working directories used the existing `/tmp` path (macOS resolves it to `/private/tmp`); no workspace picker is required. Test evidence uses separate directories underneath `/tmp`.
+Run against the exact `0.1.5-rc.1` cohort with the configured real `deepseek-official` provider and the model id read from the running host settings (`deepseek-flash`). **30 checks passed** over 20 requests (117,424 total tokens), 3 of them classifier calls.
 
 | Exact host / composition | Requests | Result |
 | --- | ---: | --- |
-| `0.1.2-alpha.2`, headless | 18 | Passed |
-| `0.1.2-alpha.3`, headless | 17 | Passed |
-| `0.1.2-alpha.5`, headless | 20 | Passed |
-| `0.1.2-rc.1`, headless | 18 | Passed |
-| `0.1.2-rc.1`, official PowerShell provider/tool on macOS | 3 | Passed; stdout `5`, exitCode `0`, workspace-write enforcement |
-| `0.1.2-rc.1`, Web | 5 | Passed; exact authorized deletion through the real classifier, target removed, UI state retained after reload |
+| `0.1.5-rc.1`, headless | 20 | Passed |
 
-The four headless runs checked native editor create/replace/view against actual bytes, deletion of an explicitly authorized pre-existing test file, classifier refusal of unauthorized deletion and injected argument authority, and an untouched sibling sentinel. **All four versions actually exercised a real model's redundant sandbox request, rejection and successful fieldless retry.** A bounded attempt that emitted correct parameters immediately was recorded as not exercising that branch, rather than counted as recovery proof.
+Exercised on the real provider: native `str_replace_editor` create/replace/view; an explicitly authorized deletion approved by the real classifier; a redundant `sandbox_permissions: workspace-write` request denied with the Auto recovery marker followed by a successful field-less retry (**the recovery branch was actually exercised, not merely attempted**); the real classifier refusing an unauthorized deletion and resisting argument-level authority injection; the Auto boundary guidance present on all 17 agent requests (the 4 remaining requests are session-title calls with no tools); and an untouched sibling sentinel. [Real API evidence](validation/0.1.8/real-api.json)
 
-PowerShell is not enabled in the default macOS composition, so its test explicitly loaded the official provider and tool. The initial composition-missing attempt was a failed test setup and was not counted as acceptance. Earlier control/model attempts that failed or did not exercise a target branch are likewise excluded from the final table.
+Two harness changes required acceptance-tooling adaptation, not policy changes: `0.1.5-rc.1` removed `str_replace_editor` from the base composition, so the acceptance profile mounts the official `@deepseek-ai/dsh-tool-str-replace-editor` package explicitly; and the model id is now read from the host settings instead of a hard-coded `deepseek-v4-flash`. The boundary-guidance probe was also repaired — it previously matched a string the guidance never contained and so always reported false.
 
-Web checks also covered Chinese/English menu, input and settings labels/icons, cancellation of the risk acknowledgement, explicit acknowledgement, and reload persistence. Those additional UI checks used the byte-identical client bundle; the final full candidate separately passed the Web API deletion and reload checks. [Real API evidence](validation/0.1.7/real-api.json) · [Web evidence](validation/0.1.7/web.json)
+### Web UI in a real browser
+
+Driven through the actual Web UI in Ego Lite against the same exact `0.1.5-rc.1` cohort and real provider. The session was created from the UI (the web profile composes agent-plane tools from the `standard` agent preset, so the headless driver's `ctx.agents.create()` does not see them) with the workspace registered by `scripts/acceptance/web-observer.mjs`, matching the 0.1.7 method.
+
+Checked: the access-mode menu renders all four presets in Chinese with the Auto row marked by the injected icon; the risk acknowledgement dialog appears in Chinese with its confirmation disabled until the checkbox is ticked; cancelling leaves the previous preset selected; confirming selects Auto; a real prompt then deleted an explicitly authorized `/tmp` file through three `bash` calls plus **one real classifier request**, with a sibling file left intact and no manual approval; and Auto plus the injected marker both survive a page reload. [Web evidence](validation/0.1.8/web.json)
 
 ## Adversarial review and boundaries
 
-Three independent agents reviewed host contracts, contribution/security policy and release behavior. Every reported regression introduced or addressed by this change was corrected and independently rechecked. The last review ran 121 targeted tests and recompiled the latest source into an independent snapshot. Real PowerShell probes used harmless marker commands to prove the dynamic interpreter parameter variants before checking their rejection. This report does not equate local model decisions with a proof that all future model outputs are safe.
+The plugin's host-facing surface (permission preset projection, tool guard and pipeline events, approval seam, system-prompt context, session event reader, locale service) is unchanged across `0.1.2-rc.1` → `0.1.5-rc.1`, which the exact-artifact fixture run confirms: **no runtime source change was needed for the new host**. The differences are confined to the dependency cohort, the default tool composition and the default model id.
 
-This remains the project's bounded, sandbox-first policy. Existing grouped/substitution opaque fallback behavior is unchanged: ordinary opaque code may run inside the write sandbox. Parsed dynamic interpreter/assignment tests do not prove the semantics of every possible shell expression. The write sandbox does not constrain all reads or network effects. Third-party patch executors remain manual because no official sandbox contract was verified for them.
+This remains the project's bounded, sandbox-first policy. Ordinary opaque shell content may still run inside the write sandbox; parsed dynamic interpreter/assignment checks do not prove the semantics of every possible shell expression. The write sandbox does not constrain all reads or network effects. Third-party patch executors remain manual because no official sandbox contract was verified for them.
 
-The old Harness `0.1.1-rc.2` permission API was reproduced at published-method level, not as a full Windows UI run. That host is not supported by 0.1.7; migration is explicit. Native Windows real API/ACL acceptance was not performed on this macOS machine. Windows tests run in the required CI matrix, separately from these local real API results.
+Not performed on this machine: PowerShell and Windows ACL acceptance, and live user-data migration. Windows coverage runs in the CI matrix. The Web client bundle is byte-identical to `0.1.7` (`8d819f59…bec62a`), and it was exercised in a real browser as described above.
 
-Raw logs and credentials remain outside Git and npm. The committed JSON contains sanitized summaries only. CI must independently pass Linux/macOS/Windows tests and the exact four-host fixture matrix, and the publish job must compare its tarball against [release-candidate.json](release-candidate.json) before publishing that same file. Stable version downgrade and tag/version mismatch are rejected.
+Raw logs and credentials remain outside Git and npm. The committed JSON contains sanitized summaries only.

@@ -9,7 +9,7 @@
 <p align="center">
   <a href="https://www.npmjs.com/package/@nanmicoder/dsh-auto-mode"><img src="https://img.shields.io/npm/v/@nanmicoder/dsh-auto-mode.svg" alt="npm 版本"></a>
   <a href="./LICENSE"><img src="https://img.shields.io/npm/l/@nanmicoder/dsh-auto-mode.svg" alt="MIT 许可证"></a>
-  <img src="https://img.shields.io/badge/DeepSeek%20Harness-0.1.2--rc.1-202724" alt="精确宿主兼容矩阵见安装说明">
+  <img src="https://img.shields.io/badge/DeepSeek%20Harness-0.1.5--rc.1-202724" alt="精确宿主兼容矩阵见安装说明">
 </p>
 
 ## 为什么需要 Auto？
@@ -19,28 +19,29 @@ Coding Agent 需要足够大的权限才能持续构建、测试和检查项目�
 `dsh-auto-mode` 补上了中间层。日常项目操作直接在官方 `workspace-write` 沙箱内执行；沙箱覆盖不了的语义风险才结合当前 DSH 模型与用户原话分类；真正不明确的动作只询问一次；破坏关键路径的操作则在执行前直接拒绝。
 
 > [!IMPORTANT]
-> 插件 `0.1.7` 支持下表中的精确 Harness 版本。推荐 `0.1.2-rc.1`；宿主仍为预发布版本。升级插件不会升级正在运行的宿主，混装 DSH 依赖也不属于受支持配置。
+> 插件 `0.1.8` 支持下表中的精确 Harness 版本。推荐 `0.1.5-rc.1`（当前 npm `latest`），宿主仍为预发布版本。此前插件只声明到 `0.1.2-rc.1`，因此在 `0.1.5-rc.1` 上安装会直接失败。升级插件不会升级正在运行的宿主，混装 DSH 依赖也不属于受支持配置。
 
 | Harness 宿主 | 插件 | 配对 |
 | --- | --- | --- |
-| `0.1.2-rc.1` | `0.1.7` | 推荐 |
-| `0.1.2-alpha.5` | `0.1.7` | 兼容 |
-| `0.1.2-alpha.3` | `0.1.7` | 保留兼容 |
-| `0.1.2-alpha.2` | `0.1.7` | 保留兼容 |
-| `0.1.1-rc.2` | 历史版本 `0.1.5` | 不支持 `0.1.6`/`0.1.7`；旧版冗余沙箱参数问题请迁移上述配对 |
+| `0.1.5-rc.1` | `0.1.8` | 推荐 |
+| `0.1.2-rc.1` | `0.1.8` | 保留兼容 |
+| `0.1.2-alpha.5` | `0.1.8` | 保留兼容 |
+| `0.1.2-alpha.3` | `0.1.8` | 保留兼容 |
+| `0.1.2-alpha.2` | `0.1.8` | 保留兼容 |
+| `0.1.1-rc.2` | 历史版本 `0.1.5` | `0.1.6` 及之后不再支持；旧版冗余沙箱参数问题请迁移上述配对 |
 | 其他版本 | 未声明 | 需先通过完整宿主验证 |
 
-精确版本由 [compatibility.json](./compatibility.json) 管理。诊断、迁移和本次修复见 [维护记录](./docs/maintenance-2026-09-06/README.md)。历史验证见 [Alpha 验收报告](./docs/alpha2-acceptance.md)。
+精确版本由 [compatibility.json](./compatibility.json) 管理。此前的诊断与修复见 [维护记录](./docs/maintenance-2026-09-06/README.md)，本次升级见 [0.1.5-rc.1 升级记录](./docs/harness-0.1.5-rc.1-upgrade-2026-09-14/README.md)。更早的验证见 [Alpha 验收报告](./docs/alpha2-acceptance.md)。
 
 ### npm
 
-先确认实际启动的 `dsh --version`，然后安装精确插件版本：
+先确认实际启动的 `dsh --version`，然后安装插件：
 
 ```sh
-dsh plugin --profile web add --save-exact @nanmicoder/dsh-auto-mode@0.1.7
+dsh plugin --profile web add @nanmicoder/dsh-auto-mode
 ```
 
-`latest` 发布稳定插件版本，`next` 发布预发布插件版本；标签不代表任意宿主兼容。Git 源码安装会通过 `prepare` 自动构建，需要开发依赖和启用安装脚本；普通 npm 包已包含编译产物。
+该命令解析 npm `latest`，即始终是最新的插件版本；不需要锁定版本号，因为兼容性由**宿主**版本决定，宿主不在上表范围内时插件会在首个用户轮次前明确拒绝运行。`next` 发布预发布插件版本；标签不代表任意宿主兼容。Git 源码安装会通过 `prepare` 自动构建，需要开发依赖和启用安装脚本；普通 npm 包已包含编译产物。
 
 ### 从源码构建
 
