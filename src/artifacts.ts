@@ -1,7 +1,7 @@
 import type { ToolExecution, ToolExecutionResult } from '@deepseek-ai/dsh-tools'
 import type { PolicyRoots } from './paths.js'
 
-/** @deprecated Inert compatibility shim. Provenance can never authorize deletion. */
+/** @deprecated Inert compatibility shim. Artifact origin can never authorize deletion. */
 export class ArtifactRegistry {
   has(_owner: object | undefined, _path: string, _roots: PolicyRoots): boolean { return false }
   hasTree(_owner: object | undefined, _path: string, _roots: PolicyRoots): boolean { return false }

@@ -1,7 +1,7 @@
 /**
  * Adapted from DeepSeek Harness dsh-v0.1.6-alpha.1,
  * packages/experimental/auto-review/src/index.ts. MIT; see LICENSE in this directory.
- * Preserves provenance-aware snapshots, action binding and strict response parsing.
+ * Preserves source-role snapshots, action binding and strict response parsing.
  * Local changes: preservation policy, byte limits, exported review helpers, no Auto/Full-access lifecycle.
  */
 /**

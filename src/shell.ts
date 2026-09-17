@@ -304,7 +304,7 @@ export function hardDenyShellReason(_source: string, _shell: ShellKind, _roots: 
   return 'Auto blocks shell commands, scripts, builds and package lifecycle code: no independently isolated execution broker is available'
 }
 
-/** Legacy signature retained; artifact provenance never grants execution. */
+/** Legacy signature retained; artifact origin never grants execution. */
 export function assessShell(source: string, shell: ShellKind, roots: PolicyRoots, _artifacts?: ArtifactRegistry, _owner?: object): Assessment {
   return { decision: 'deny', reason: hardDenyShellReason(source, shell, roots), classifierEligible: false }
 }
