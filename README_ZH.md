@@ -29,7 +29,7 @@
 
 ## 使用与验证
 
-独立插件面向一致的 **Harness 0.1.5-rc.1** 依赖组合；桌面集成目标为 **0.1.6-alpha.1.desktop.1**，验收状态单独见 VALIDATION；旧版、混合安装以及 `desktop.5` 不自动声明兼容。先在独立 Profile 验证本 Fork 打出的 `.tgz`，不要用上游 npm `latest` 代替它。未发布到 npm。桌面构建内置私有源码副本，默认开启 `enforceAllSessions: true` 与 `modelReview: true`，旧会话的权限选择仍受保护。宿主在插件缺失、卸载或替换时拒绝工具执行。
+独立插件面向一致的 **Harness 0.1.5-rc.1** 依赖组合；桌面集成目标为 **0.1.6-alpha.1.desktop.2**，验收状态单独见 VALIDATION；旧版、混合安装以及 `desktop.5` 不自动声明兼容。先在独立 Profile 验证本 Fork 打出的 `.tgz`，不要用上游 npm `latest` 代替它。未发布到 npm。桌面构建内置私有源码副本，默认开启 `enforceAllSessions: true` 与 `modelReview: true`，旧会话的权限选择仍受保护。宿主在插件缺失、卸载或替换时拒绝工具执行。
 
 ```sh
 pnpm install --frozen-lockfile --ignore-scripts

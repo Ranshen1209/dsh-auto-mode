@@ -20,7 +20,7 @@ The official filesystem conditional-write API adds version checks and the plugin
 
 ## Compatibility and development
 
-The standalone candidate targets coherent **Harness 0.1.5-rc.1**. The desktop integration targets **0.1.6-alpha.1.desktop.1**; its product validation is tracked separately in [VALIDATION.md](VALIDATION.md). Older hosts, mixed cohorts and the custom `desktop.5` build are not automatically supported. Validate this fork's packed `.tgz` in an isolated Profile. The candidate is not published to npm. Desktop bundles a private source copy and enables `enforceAllSessions: true` with `modelReview: true`; saved permission selections cannot remove its protection.
+The standalone candidate targets coherent **Harness 0.1.5-rc.1**. The desktop integration targets **0.1.6-alpha.1.desktop.2**; its product validation is tracked separately in [VALIDATION.md](VALIDATION.md). Older hosts, mixed cohorts and the custom `desktop.5` build are not automatically supported. Validate this fork's packed `.tgz` in an isolated Profile. The candidate is not published to npm. Desktop bundles a private source copy and enables `enforceAllSessions: true` with `modelReview: true`; saved permission selections cannot remove its protection.
 
 ```sh
 pnpm install --frozen-lockfile --ignore-scripts
