@@ -8,7 +8,7 @@ import { syncBuiltinESMExports } from 'node:module'
 import { inspectHarness, PLUGIN } from './harness-doctor.mjs'
 
 const version = '0.1.2-rc.1'
-const shared = ['cordis', 'dsh-session', 'dsh-tools', 'dsh-llm', 'dsh-permission-presets', 'dsh-user-approval', 'dsh-system-prompt', 'dsh-client-locale']
+const shared = ['cordis', 'dsh-fs', 'dsh-session', 'dsh-tools', 'dsh-llm', 'dsh-permission-presets', 'dsh-user-approval', 'dsh-system-prompt', 'dsh-client-locale']
 const json = (path, data) => writeFileSync(path, JSON.stringify(data))
 function packageAt(root, name, targetVersion = version) {
   const path = join(root, 'node_modules', '@deepseek-ai', name)
@@ -31,11 +31,11 @@ function fixture(t) {
   writeFileSync(join(artifactRoot, 'cordis.patch.yml'), '- insert: []\n')
   for (const file of ['index.js', 'client.js', 'policy.js']) writeFileSync(join(artifactRoot, 'lib', file), '// Packaged diagnostic fixture.\n')
   execFileSync('tar', ['-czf', artifact, '-C', root, 'package'])
-  symlinkSync(join(runtime, 'node_modules'), join(artifactRoot, 'node_modules'), 'dir')
+  symlinkSync(join(runtime, 'node_modules'), join(artifactRoot, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir')
   mkdirSync(join(profile, 'node_modules/@deepseek-ai'), { recursive: true })
-  for (const name of shared) symlinkSync(join(runtime, 'node_modules/@deepseek-ai', name), join(profile, 'node_modules/@deepseek-ai', name), 'dir')
+  for (const name of shared) symlinkSync(join(runtime, 'node_modules/@deepseek-ai', name), join(profile, 'node_modules/@deepseek-ai', name), process.platform === 'win32' ? 'junction' : 'dir')
   mkdirSync(join(profile, 'node_modules/@nanmicoder'), { recursive: true })
-  symlinkSync(artifactRoot, join(profile, 'node_modules/@nanmicoder/dsh-auto-mode'), 'dir')
+  symlinkSync(artifactRoot, join(profile, 'node_modules/@nanmicoder/dsh-auto-mode'), process.platform === 'win32' ? 'junction' : 'dir')
   json(join(profile, 'package.json'), { name: 'diagnostic-test-profile', version: '0.0.0', dsh: { profile: { bundles: [PLUGIN] } } })
   return { runtime, profile, artifactRoot, artifact, expectedVersion: version }
 }

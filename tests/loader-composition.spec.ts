@@ -23,7 +23,7 @@ afterEach(async () => {
 })
 
 describe('real Cordis Loader composition', () => {
-  it('allows a routine command and blocks danger before the body', async () => {
+  it('blocks commands and unknown capabilities through the Loader, even under allow wrappers', async () => {
     root = await mkdtemp(join(tmpdir(), 'dsh-auto-mode-loader-'))
     const configPath = join(root, 'cordis.yml')
     await writeFile(configPath, [
@@ -31,6 +31,7 @@ describe('real Cordis Loader composition', () => {
       "- name: '@deepseek-ai/dsh-tools'",
       "- name: '@nanmicoder/dsh-auto-mode'",
       '  config:',
+      '    modelReview: false',
       `    workspaceRoot: ${JSON.stringify(root)}`,
       `    dshHome: ${JSON.stringify(join(root, '.dsh'))}`,
       '    classifierTimeoutMs: 1000',
@@ -175,29 +176,29 @@ describe('real Cordis Loader composition', () => {
       callId: ToolCallId(id), name: 'bash', arguments: { command }, agent: agentFor(preset), signal: new AbortController().signal,
     })
 
-    await expect(run('safe', 'pnpm test')).resolves.toMatchObject({ isError: false })
+    await expect(run('safe', 'pnpm test')).resolves.toMatchObject({ isError: true })
     await expect(context.tools.execute({
       callId: ToolCallId('ordinary-plugin'), name: 'plugin_render_diagram', arguments: { source: 'graph TD' }, agent: agentFor('auto'), signal: new AbortController().signal,
-    })).resolves.toMatchObject({ isError: false })
+    })).resolves.toMatchObject({ isError: true })
     await expect(context.tools.execute({
       callId: ToolCallId('risky-plugin'), name: 'cloud_deploy', arguments: { target: 'production' }, agent: agentFor('auto'), signal: new AbortController().signal,
     })).resolves.toMatchObject({ isError: true })
     await expect(run('root', 'rm -rf /')).resolves.toMatchObject({ isError: true })
-    await expect(run('ambiguous', 'python script.py')).resolves.toMatchObject({ isError: false })
+    await expect(run('ambiguous', 'python script.py')).resolves.toMatchObject({ isError: true })
     await expect(run('classifier-deny', 'git push origin main')).resolves.toMatchObject({ isError: true })
     await expect(run('classifier-ask', 'npx ask.py')).resolves.toMatchObject({ isError: true })
     await expect(run('classifier-invalid', 'npx invalid.py')).resolves.toMatchObject({ isError: true })
     await expect(run('full-access-root', 'rm -rf /', 'danger-full-access')).resolves.toMatchObject({ isError: false })
     await expect(context.tools.execute({
       callId: ToolCallId('child-safe'), name: 'bash', arguments: { command: 'pnpm test' }, agent: delegatedAgent, signal: new AbortController().signal,
-    })).resolves.toMatchObject({ isError: false })
+    })).resolves.toMatchObject({ isError: true })
     await expect(context.tools.execute({
       callId: ToolCallId('child-root'), name: 'bash', arguments: { command: 'rm -rf /' }, agent: delegatedAgent, signal: new AbortController().signal,
     })).resolves.toMatchObject({ isError: true })
     const childClassified = await context.tools.execute({
       callId: ToolCallId('child-classified'), name: 'bash', arguments: { command: 'npx child' }, agent: delegatedAgent, signal: new AbortController().signal,
     })
-    expect(childClassified.isError, JSON.stringify(childClassified)).toBe(false)
+    expect(childClassified.isError, JSON.stringify(childClassified)).toBe(true)
     const childEscalation = await context.tools.execute({
       callId: ToolCallId('child-escalation'),
       name: 'bash',
@@ -211,12 +212,11 @@ describe('real Cordis Loader composition', () => {
     })
     expect(childEscalation.isError).toBe(true)
     expect(childEscalation.content).toEqual(expect.arrayContaining([
-      expect.objectContaining({ text: expect.stringContaining('[auto-mode delegated escalation denied]') }),
+      expect.objectContaining({ text: expect.stringContaining('Auto blocks shell') }),
     ]))
-    expect(bodyCalls).toBe(5)
-    expect(ordinaryPluginBodyCalls).toBe(1)
+    expect(bodyCalls).toBe(1)
+    expect(ordinaryPluginBodyCalls).toBe(0)
     expect(riskyPluginBodyCalls).toBe(0)
-    expect(classifierCalls).toHaveLength(5)
-    expect(classifierCalls[4]?.trustedUserMessages).toEqual(['Build and test this project.'])
+    expect(classifierCalls).toHaveLength(0)
   })
 })

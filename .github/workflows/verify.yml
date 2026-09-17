@@ -2,7 +2,7 @@ name: Verify
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, 'security/**']
   workflow_call:
     inputs:
       source-ref:
@@ -51,7 +51,7 @@ jobs:
       - run: node scripts/verify-package.mjs
       - run: node scripts/verify-maintenance.mjs
       - id: matrix
-        run: node -e "require('fs').appendFileSync(process.env.GITHUB_OUTPUT, 'hosts=' + JSON.stringify(require('./compatibility.json').supportedHosts.map(h => h.version)) + '\n')"
+        run: node -e "require('fs').appendFileSync(process.env.GITHUB_OUTPUT, 'hosts=' + JSON.stringify(require('./compatibility.json').supportedHosts.filter(h => h.track !== 'desktop').map(h => h.version)) + '\n')"
       - name: Create immutable candidate
         shell: bash
         run: |

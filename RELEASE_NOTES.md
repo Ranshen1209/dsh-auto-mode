@@ -1,3 +1,18 @@
+# Candidate 0.3.0-alpha.1
+
+- Combine official Auto review source-role separation with preservation rules. Every admissible call uses the active model; denial, malformed output, timeout, cancellation or changed authorization blocks execution. File edits still require exact manual approval.
+- Default-enable both review and hard protection in the desktop bundle; bind unload cancellation and policy epochs to the desktop execution gate.
+
+Unreleased maintenance-fork candidate, based on upstream 0.1.9. No desktop installation, npm publication or Release deployment is implied.
+
+- Replace semantic auto-approval with preservation-first default denial for shells, scripts, builds, installs, deletion, unknown tools and sandbox widening.
+- Require fresh exact manual approval for structured edits, with ancestor/link checks, full call identity, permission-history checks and version-conditional filesystem commits.
+- Fix listener/mode-change and path-parameter-confusion bypasses; block repeated dispatch/commit and child self-approval. Remove artifact-derived deletion authority and legacy classifier grants.
+- Update Chinese/English UI explanations. Keep the exact Harness 0.1.5-rc.1 standalone cohort and add a separately validated private desktop cohort. Legacy classifier settings are ignored, automatic grant APIs are inert.
+- This is a deliberate breaking behavior change: previous unattended development/cleanup workflows stop. See README and DESIGN for trust boundaries; no absolute safety guarantee is claimed.
+
+## Historical upstream release notes (not evidence for this candidate)
+
 Auto Mode 0.1.9 supports the exact Harness cohort `0.1.5-rc.1`, `0.1.2-rc.1`, `0.1.2-alpha.5`, `0.1.2-alpha.3`, and `0.1.2-alpha.2`. `0.1.5-rc.1` is the current npm `latest` host and is now the recommended pair; installs on it previously failed because the plugin declared support only up to `0.1.2-rc.1`. Use `dsh --version` to check the running host before upgrading the plugin. Harness `0.1.1-rc.2` must migrate to a supported pair; this release does not backport the old host API.
 
 - Support the exact `0.1.5-rc.1` host cohort. The resolved closure gained 17 packages and lost 4 relative to `0.1.2-rc.1`, so the override list was regenerated from the resolved graph rather than re-versioned in place. The previously failing `plugin tree failed to load ... unsupported or mixed Harness packages` report is reproduced and fixed.

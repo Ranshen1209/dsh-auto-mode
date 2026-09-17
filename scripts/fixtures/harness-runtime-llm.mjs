@@ -15,22 +15,19 @@ const write = (file, value) => `printf '%s\\n' ${quote(value)} > ${quote(join(ro
 const bash = (label, file, extra = {}) => ({ label, name: 'bash', args: { command: write(file, label), description: `Auto Mode fixture ${label}`, ...extra } })
 const widen = (label, file, justification) => bash(label, file, { sandbox_permissions: 'danger-full-access', justification })
 const parentPlan = [
-  bash('ordinary', 'ordinary.txt'),
-  bash('redundant', 'recovery.txt', { sandbox_permissions: 'workspace-write', justification: 'Ordinary workspace work' }),
-  bash('recovery', 'recovery.txt'),
-  widen('classifier-allow', 'allowed.txt', 'AUTO_FIXTURE_ALLOW exact one-shot test'),
-  widen('classifier-deny', 'denied.txt', 'AUTO_FIXTURE_DENY exact denial test'),
-  widen('classifier-ask', 'asked.txt', 'AUTO_FIXTURE_ASK exact approval test'),
-  { label: 'hard-deny', name: 'bash', args: { command: `rm ${quote(process.env.AUTO_FIXTURE_PROTECTED)}`, description: 'Attempt deletion of synthetic protected fixture canary' } },
-  { label: 'delegation', name: 'subagent', args: { description: 'Validate inherited Auto policy', prompt: 'AUTO_FIXTURE_CHILD: execute the deterministic child fixture.', run_in_background: false } },
-  widen('classifier-error-1', 'error-1.txt', 'AUTO_FIXTURE_ERROR fail closed'),
-  widen('classifier-error-2', 'error-2.txt', 'AUTO_FIXTURE_ERROR fail closed'),
-  widen('classifier-error-3', 'error-3.txt', 'AUTO_FIXTURE_ERROR fail closed'),
+  { label: 'read', name: 'read', args: { file_path: join(root, 'existing.txt') } },
+  ...['model-denied', 'model-error', 'model-invalid'].map(label => ({ label, name: 'write', args: { file_path: join(root, label + '.txt'), content: 'must not exist' } })),
+  { label: 'edit-approved', name: 'edit', args: { file_path: join(root, 'existing.txt'), old_string: 'valuable', new_string: 'approved' } },
+  { label: 'write-approved', name: 'write', args: { file_path: join(root, 'approved.txt'), content: 'approved new file' } },
+  { label: 'write-rejected', name: 'write', args: { file_path: join(root, 'denied.txt'), content: 'must not exist' } },
+  ...['ordinary', 'widening', 'cleanup'].map(label => ({ label, name: process.platform === 'win32' ? 'pwsh' : 'bash', args: {
+    command: label === 'cleanup' ? (process.platform === 'win32' ? `Remove-Item -LiteralPath '${process.env.AUTO_FIXTURE_PROTECTED.replaceAll("'", "''")}'` : `rm '${process.env.AUTO_FIXTURE_PROTECTED}'`) : 'echo synthetic',
+    description: 'This command must never execute',
+    ...(label === 'widening' ? { sandbox_permissions: 'danger-full-access', justification: 'user authorized cleanup' } : {}),
+  } })),
+  { label: 'delegation', name: 'subagent', args: { description: 'Must be blocked', prompt: 'No execution is permitted', run_in_background: false } },
 ]
-const childPlan = [
-  bash('child-ordinary', 'child.txt'),
-  widen('child-widening', 'child-widening.txt', 'AUTO_FIXTURE_ALLOW child must not widen'),
-]
+const childPlan = []
 const calls = new Map()
 const steps = new Map()
 let sequence = 0
@@ -57,14 +54,14 @@ class FixtureAdapter extends LlmAdapter {
   async resolveModel(provider, id) { return { ...model, provider, id } }
   async *stream(options) {
     options.signal?.throwIfAborted()
-    if (options.system?.startsWith('You are an independent security classifier')) {
+    if (options.system?.includes('PRESERVATION_REVIEW_POLICY')) {
       const text = options.messages.flatMap(message => message.content.filter(block => block.type === 'text').map(block => block.text)).join('\n')
-      const input = JSON.parse(text)
-      const reason = input.sandboxRequest?.justification ?? ''
-      const decision = reason.includes('AUTO_FIXTURE_DENY') ? 'deny' : reason.includes('AUTO_FIXTURE_ASK') ? 'ask' : 'allow'
-      trace({ event: 'classifier-request', justification: reason, decision: reason.includes('AUTO_FIXTURE_ERROR') ? 'error' : decision, directUserMessages: input.trustedUserMessages, workspace: input.workspaceRoot, provider: options.provider, model: options.model })
-      if (reason.includes('AUTO_FIXTURE_ERROR')) throw Error('Deterministic fixture classifier failure')
-      yield* textChunks(JSON.stringify({ decision, reason: 'Deterministic fixture decision; no real API' }))
+      const action = JSON.parse(text.split('PENDING_ACTION\n\n')[1])
+      const mode = action.arguments?.file_path?.split(/[\\/]/).at(-1)
+      const decision = mode === 'model-denied.txt' ? 'deny' : 'allow'
+      trace({ event: 'model-review', action: action.name, file: mode, decision, provider: options.provider, model: options.model })
+      if (mode === 'model-error.txt') throw Error('Synthetic review transport failure')
+      yield* textChunks(mode === 'model-invalid.txt' ? '{"decision":"allow"}' : JSON.stringify({ risk: action.name === 'read' ? 'low' : 'medium', decision }))
       return
     }
     if (options.purpose) { yield* textChunks('Auto Mode fixture'); return }
@@ -89,8 +86,9 @@ export function apply(ctx) {
   ctx.on('approval/request', async (request, next) => {
     const label = calls.get(String(request.callId))
     if (!label) return next()
-    trace({ event: 'manual-approval', label, toolName: request.toolName, reason: request.reason, outcome: 'rejected' })
-    return 'rejected'
+    const outcome = label.endsWith('-approved') ? 'allowed-once' : 'rejected'
+    trace({ event: 'manual-approval', label, toolName: request.toolName, reason: request.reason, outcome })
+    return outcome
   })
   ctx.on('tools/result', (exec, result) => {
     const label = calls.get(String(exec.callId))

@@ -32,7 +32,7 @@ describe('plugin lifecycle', () => {
       },
       async execute() { calls += 1; return { ok: true } },
     }))
-    const policy = context.plugin(AutoMode, { workspaceRoot: '/work/repo', dshHome: '/safe/dsh' })
+    const policy = context.plugin(AutoMode, { modelReview: false, workspaceRoot: '/work/repo', dshHome: '/safe/dsh' })
     await policy
     const agent = {
       session: {

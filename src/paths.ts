@@ -145,10 +145,10 @@ export function isProtectedProjectPath(target: string, roots: PolicyRoots): bool
   const style = styleOf(roots.workspace)
   const api = pathApi(style)
   const relative = api.relative(roots.workspace, normalized).replaceAll('\\', '/')
-  const first = relative.split('/')[0]?.toLowerCase()
-  if (first !== undefined && ['.git', '.vscode', '.idea', '.husky', '.dsh'].includes(first)) return true
+  const segments = relative.toLowerCase().split('/')
+  if (segments.some(part => ['.git', '.vscode', '.idea', '.husky', '.dsh', '.codex', '.claude', '.github'].includes(part))) return true
   const base = api.basename(normalized).toLowerCase()
-  return ['.gitconfig', '.gitmodules', '.bashrc', '.bash_profile', '.zshrc', '.zprofile', '.profile', '.mcp.json'].includes(base)
+  return ['.gitconfig', '.gitmodules', '.bashrc', '.bash_profile', '.zshrc', '.zprofile', '.profile', '.mcp.json', 'agents.md', 'claude.md', 'cordis.yml', 'cordis.patch.yml'].includes(base)
 }
 
 /** Deterministic destructive-target fuse. */

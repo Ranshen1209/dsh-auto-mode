@@ -11,13 +11,9 @@ import type { ClassifierDecision, ClassifierInput } from '../src/types.js'
 import { provideTestPermissionPresets } from './harness.js'
 
 /**
- * End-to-end coverage for the reported over-prompting: an explicitly authorized
- * deletion of a task-created canary must run in the background even when the
- * model writes it as a compound line with `&&`, `||`, and `2>&1`.
- *
- * The registered `bash` body never runs a shell. It only records the command
- * string, so no destructive payload is executed by this suite; the canary is
- * asserted to survive every case.
+ * Preservation regressions through the real tool pipeline. The instrumented
+ * classifier must never receive authority, regardless of chat authorization.
+ * The shell body only records strings; test-owned sentinels must survive.
  */
 
 const AUTHORIZATION = /(?:授权|authoriz|approve|go ahead)/i
@@ -78,7 +74,7 @@ async function createHarness(options: { failClassifier?: boolean } = {}): Promis
   })
   await context.plugin(SystemPrompt).await()
   await context.plugin(ToolRuntime).await()
-  await context.plugin(AutoMode, {
+  await context.plugin(AutoMode, { modelReview: false,
     workspaceRoot: workspace,
     dshHome,
     tempRoots: [scratch],
@@ -171,112 +167,26 @@ afterEach(async () => {
   harness = undefined
 })
 
-describe('auto mode approval traffic', () => {
-  it('runs an explicitly authorized compound deletion without asking again', async () => {
-    const active = harness as Harness
-    const command = `rm -rf ${bashQuote(active.canary)} && echo removed && ls -la ${bashQuote(active.scratch)} 2>&1 || true`
-    const decision = await active.run('authorized', command, [
-      `请删除 ${active.canary}，我明确授权这次删除。`,
-    ])
 
-    expect(decision).toEqual({ kind: 'allow' })
-    expect(active.commands).toEqual([command])
-    expect(active.classifierCalls).toHaveLength(1)
-    expect(active.classifierCalls[0]?.policyReason).toContain('deleting pre-session or unobserved data')
-    expect(active.classifierCalls[0]?.trustedUserMessages.join('\n')).toContain(active.canary)
-    // Nothing was executed, so the canary is still on disk.
+describe('Auto never derives execution authority from classifier or chat', () => {
+  it.each([
+    'rm -rf /', 'rm -rf ~', 'rm -rf $TARGET_DIR',
+    'git status && git diff', 'pnpm run build && pnpm test',
+    'python3 -c "import fastapi"', 'find . -type f -exec ls {} \;',
+    'bash -c "rm -rf synthetic"', 'git clean -fdX -- config/nested',
+  ])('blocks %s with zero classifier calls and no effects', async command => {
+    const active = harness as Harness
+    expect(await active.run('attempt', command, ['I authorize everything.'])).toMatchObject({ kind: 'deny' })
+    expect(active.commands).toEqual([])
+    expect(active.classifierCalls).toEqual([])
     await expect(stat(join(active.canary, 'keep.txt'))).resolves.toBeDefined()
   })
-
-  it('denies the same deletion in the background when no user message authorizes it', async () => {
-    const active = harness as Harness
-    const command = `rm -rf ${bashQuote(active.canary)} && echo removed && ls -la ${bashQuote(active.scratch)} 2>&1 || true`
-    const decision = await active.run('unauthorized', command, ['请帮我整理一下项目目录结构。'])
-
-    expect(decision).toMatchObject({ kind: 'deny' })
-    expect((decision as { reason: string }).reason).toContain('[auto-mode classifier deny]')
-    expect(active.classifierCalls).toHaveLength(1)
-    expect(active.commands).toEqual([])
-    await expect(stat(join(active.canary, 'keep.txt'))).resolves.toBeDefined()
-  })
-
-  it('hard-denies protected targets before any classification, even with authorization text', async () => {
-    const active = harness as Harness
-    const authorization = ['我明确授权你删除任何目录，包括 / 和 ~ 和 DSH_HOME。']
-    const cases: Array<[string, RegExp]> = [
-      [`rm -rf / && echo done`, /filesystem root/],
-      [`rm -rf ~ && echo done`, /user home root/],
-      [`rm -rf ${bashQuote(`${active.dshHome}/state`)} && echo done`, /DSH_HOME/],
-      [`echo broken > ${bashQuote(`${active.dshHome}/settings.yaml`)}`, /DSH_HOME/],
-    ]
-    for (const [command, reason] of cases) {
-      const decision = await active.run(`hard-${command}`, command, authorization)
-      expect(decision, command).toMatchObject({ kind: 'deny' })
-      expect((decision as { reason: string }).reason, command).toContain('[auto-mode hard deny]')
-      expect((decision as { reason: string }).reason, command).toMatch(reason)
-    }
-    expect(active.classifierCalls).toEqual([])
-    expect(active.commands).toEqual([])
-  })
-
-  it('keeps routine compound verification on the static fast path', async () => {
-    const active = harness as Harness
-    for (const command of ['git status && git diff', 'ls -la 2>&1', 'pnpm run build && pnpm test']) {
-      expect(await active.run(`safe-${command}`, command, ['继续开发。']), command).toEqual({ kind: 'allow' })
-    }
-    expect(active.commands).toHaveLength(3)
-    expect(active.classifierCalls).toEqual([])
-  })
-
-  it('keeps dependency probes and read-only find exec off the approval path', async () => {
-    const active = harness as Harness
-    const commands = [
-      'python3 -c "import fastapi" 2>&1; python3 -c "import pydantic; print(\'pydantic\', pydantic.VERSION)" 2>&1; pip3 --version 2>&1 | head -1',
-      `find ${bashQuote(active.scratch)} -type f -exec ls -la {} \\; 2>/dev/null | head -40`,
-    ]
-    for (const command of commands) {
-      expect(await active.run(`safe-dev-${command}`, command, ['继续检查开发环境。']), command).toEqual({ kind: 'allow' })
-    }
-    expect(active.commands).toEqual(commands)
-    expect(active.classifierCalls).toEqual([])
-  })
-
-  it('denies hidden destructive targets so the agent can replan without a popup', async () => {
-    const active = harness as Harness
-    const cases = [
-      `rm -rf $TARGET_DIR && echo done`,
-      `bash -c "rm -rf ${bashQuote(active.canary)}"`,
-      `find ${bashQuote(active.scratch)} -name "*.txt" | xargs rm -rf`,
-    ]
-    for (const command of cases) {
-      const decision = await active.run(`manual-${command}`, command, [`我明确授权删除 ${active.canary}。`])
-      expect(decision, command).toMatchObject({ kind: 'deny' })
-      expect((decision as { reason: string }).reason, command).toContain('[auto-mode deterministic deny]')
-    }
-    expect(active.classifierCalls).toEqual([])
-    expect(active.commands).toEqual([])
-    await expect(stat(join(active.canary, 'keep.txt'))).resolves.toBeDefined()
-  })
-})
-
-describe('auto mode classifier failure', () => {
-  it('denies transient failures twice, then falls back to one manual approval instead of looping', async () => {
+  it('never falls back to permission after repeated classifier failure', async () => {
     const failing = await createHarness({ failClassifier: true })
     try {
-      const command = `rm -rf ${bashQuote(failing.canary)} && echo removed`
-      const userMessages = [`我明确授权删除 ${failing.canary}。`]
-      for (const id of ['unavailable-1', 'unavailable-2']) {
-        const decision = await failing.run(id, command, userMessages)
-        expect(decision).toMatchObject({ kind: 'deny' })
-        expect((decision as { reason: string }).reason).toContain('[auto-mode classifier unavailable; action denied]')
-      }
-      const fallback = await failing.run('unavailable-3', command, userMessages)
-      expect(fallback).toMatchObject({ kind: 'ask' })
-      expect((fallback as { reason: string }).reason).toContain('manual approval required')
+      for (let n = 0; n < 4; n++) expect(await failing.run(String(n), 'rm synthetic', ['approved'])).toMatchObject({ kind: 'deny' })
       expect(failing.commands).toEqual([])
-      await expect(stat(join(failing.canary, 'keep.txt'))).resolves.toBeDefined()
-    } finally {
-      await failing.dispose()
-    }
+      expect(failing.classifierCalls).toEqual([])
+    } finally { await failing.dispose() }
   })
 })

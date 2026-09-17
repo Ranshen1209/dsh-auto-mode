@@ -1,149 +1,37 @@
-<p align="right">
-  <strong>English</strong> · <a href="./README_ZH.md">简体中文</a>
-</p>
+# dsh-auto-mode: preservation first
 
-<p align="center">
-  <img src="./assets/readme/hero.svg" width="100%" alt="dsh-auto-mode lets routine DeepSeek Harness work flow while stopping risky actions">
-</p>
+Maintained [Ranshen1209 fork](https://github.com/Ranshen1209/dsh-auto-mode) of [NanmiCoder/dsh-auto-mode](https://github.com/NanmiCoder/dsh-auto-mode), based on 0.1.9. Candidate **0.3.0-alpha.1** deliberately changes the original unattended-approval contract. Upstream npm 0.1.9 does not contain these fixes. [中文说明](README_ZH.md).
 
-<p align="center">
-  <a href="https://www.npmjs.com/package/@nanmicoder/dsh-auto-mode"><img src="https://img.shields.io/npm/v/@nanmicoder/dsh-auto-mode.svg" alt="npm version"></a>
-  <a href="./LICENSE"><img src="https://img.shields.io/npm/l/@nanmicoder/dsh-auto-mode.svg" alt="MIT license"></a>
-  <img src="https://img.shields.io/badge/DeepSeek%20Harness-0.1.5--rc.1-202724" alt="See installation instructions for exact host compatibility">
-</p>
+## Policy
 
-## Why Auto?
+- Review every structurally admissible call with the active agent provider/model. Allow verified ordinary reads and audited session controls only after that fresh risk and authorization decision. Never cache an allowance across calls.
+- Require a fresh official manual approval for each structured file modification and sensitive workspace read. Bind the complete arguments, call identity, permission history, target identity/content and backend file version. An approved edit can overwrite content; review the full call.
+- Block shells, scripts, builds, installers, deletion/cleanup, opaque patch tools, external agents/workflows, stateful terminal execution, unknown tools and sandbox widening. No independently isolated execution broker is available.
+- Reject links/junctions, hard-linked files, ambiguous Windows aliases, ADS/device paths, outside-workspace files, root targets and security metadata mutations. Fail closed on inaccessible ancestors. Exact file review is limited to 16 MiB; creation requires an existing parent. Recursive search is currently disabled.
+- A model decision, old chat message, justification or same-session artifact never grants authority. Official Auto review snapshotting is combined with deterministic preservation checks; model output is a veto, never Full access. Review failures, malformed responses, cancellation and timeouts deny the call. Workspace artifact discovery has been removed. Legacy classifier configuration is ignored; automatic grant/cleanup compatibility classes are inert.
 
-Coding agents need broad access to build, test, and inspect a project without stopping every few steps. But DeepSeek Harness currently leaves a sharp choice: restricted modes interrupt normal development, while Full access removes approval entirely.
+Each review uses the official source-role separation: human instructions, direct-parent scope, project constraints, checkpoints and facts. Tool outputs and assistant claims do not grant authority. Review results bind the full pending call, schema/model route, visible instruction history, permission history and current file identity; changes or a 120-second lifetime invalidate the result. Hard-denied actions are rejected before contacting a model. Ordinary calls incur one extra model request and its latency/cost.
 
-`dsh-auto-mode` adds the missing middle ground. Routine project work runs directly inside the official `workspace-write` sandbox, only semantic risks outside that boundary are classified using the current DSH model and the direct user's instructions, genuine ambiguity asks once, and destructive access to critical paths is denied before execution.
+## Scope and limitations
 
-> [!IMPORTANT]
-> Plugin `0.1.9` supports the exact Harness versions below. The recommended host is `0.1.5-rc.1`, the current npm `latest`; it is still a host prerelease. Earlier plugin releases declared support only up to `0.1.2-rc.1`, which is why installing on `0.1.5-rc.1` failed. Updating the plugin does not upgrade the running host. Mixed DSH dependency cohorts are unsupported.
+This is a tool-pipeline policy, **not an absolute deletion guarantee or an OS sandbox**. It requires an active backend and Auto preset, the exact verified host cohort, trusted tool implementations, filesystem provider and approval answerers. Same-name tool replacement, direct plugin filesystem access, pre-load package scripts, compromised hosts, mode switching, plugin unloading/HMR and external processes are outside the guarantee. A visible Auto label alone does not prove the backend is active.
 
-| Harness host | Plugin | Pair |
-| --- | --- | --- |
-| `0.1.5-rc.1` | `0.1.9` | Recommended |
-| `0.1.2-rc.1` | `0.1.9` | Retained compatibility |
-| `0.1.2-alpha.5` | `0.1.9` | Retained compatibility |
-| `0.1.2-alpha.3` | `0.1.9` | Retained compatibility |
-| `0.1.2-alpha.2` | `0.1.9` | Retained compatibility |
-| `0.1.1-rc.2` | Historical `0.1.5` | Unsupported by `0.1.6` and later; migrate to a pair above for redundant sandbox recovery |
-| Other versions | Undeclared | Require full host validation first |
+The official filesystem conditional-write API adds version checks and the plugin prevents tested approval replays, but this does not create an atomic kernel path capability. External content changes to the same file, or directory replacement, between the last check and OS operation can still be overwritten; these remain host/filesystem concerns. Windows ACL sandboxing is not complete read/network/write confinement. Arbitrary execution would require a separately verified disposable VM/container with no sensitive mounts, host credentials or shared writable drives; this candidate has no such broker.
 
-[compatibility.json](./compatibility.json) defines the exact matrix. See the [maintenance record](./docs/maintenance-2026-09-06/README.md) for earlier diagnosis and fixes, the [0.1.5-rc.1 upgrade record](./docs/harness-0.1.5-rc.1-upgrade-2026-09-14/README.md) for this release, and the [historical Alpha acceptance report](./docs/alpha2-acceptance.md) for older evidence.
+## Compatibility and development
 
-### npm
-
-Check the actually running `dsh --version`, then install the plugin:
+The standalone candidate targets coherent **Harness 0.1.5-rc.1**. The desktop integration targets **0.1.6-alpha.1.desktop.1**; its product validation is tracked separately in [VALIDATION.md](VALIDATION.md). Older hosts, mixed cohorts and the custom `desktop.5` build are not automatically supported. Validate this fork's packed `.tgz` in an isolated Profile. The candidate is not published to npm. Desktop bundles a private source copy and enables `enforceAllSessions: true` with `modelReview: true`; saved permission selections cannot remove its protection.
 
 ```sh
-dsh plugin --profile web add @nanmicoder/dsh-auto-mode
+pnpm install --frozen-lockfile --ignore-scripts
+pnpm run typecheck
+pnpm run build
+pnpm test
+node scripts/verify-package.mjs
 ```
 
-This resolves npm `latest`, which is always the newest plugin release; pinning is unnecessary because compatibility is decided by the **host** version, and the plugin refuses a host outside the matrix above before the first user turn. `next` carries plugin prereleases. Neither tag implies arbitrary host compatibility. Git source installs build through `prepare` and require development dependencies and enabled install scripts. Registry packages already contain compiled output.
+Tests use owned disposable sentinels. Windows execution requires read access to ancestor identities; missing access must remain a denial. See [DESIGN.md](DESIGN.md) for the security contract and sources, [VALIDATION.md](VALIDATION.md) for evidence and unverified boundaries, and [RELEASE_NOTES.md](RELEASE_NOTES.md) for migration notes. Historical evidence under `docs/` describes old releases, not this candidate.
 
-### Build from source
+Original authorship and contribution history are preserved. [MIT](LICENSE).
 
-```sh
-git clone https://github.com/NanmiCoder/dsh-auto-mode.git
-cd dsh-auto-mode
-pnpm install
-pnpm build
-dsh plugin --profile web add .
-```
-
-Run `pnpm build` again after changing the source. The local plugin install remains linked to this checkout.
-
-Validate the composed profile and start DSH:
-
-```sh
-dsh --profile web --dump-config
-dsh web
-```
-
-Refresh the Web UI, select **Auto** between Workspace Write and Full access, and acknowledge the risk notice. Replace `web` with another profile name when that is the profile you run.
-
-The Web client registers its copy with DSH's official locale service. English keeps the **Auto** product label; Chinese shows **自动审批**. Switching the DSH language updates the permission menus, active-mode control, General-settings selector, `/permission` picker description, and acknowledgement dialog without a restart.
-
-## Permission modes
-
-| Mode | File sandbox | Approval | Auto policy |
-| --- | --- | --- | --- |
-| Read Only | `read-only` | ask | inactive |
-| Workspace Write | `workspace-write` | ask | inactive |
-| **Auto** | `workspace-write` | ask | **active** |
-| Full access | `danger-full-access` | never | inactive |
-
-Ordinary Auto work stays inside Workspace Write. Only an explicit one-shot widening may be approved automatically:
-
-| Decision | Typical effect |
-| --- | --- |
-| **Allow** | unfamiliar sandboxed Bash/PowerShell, routine dependency installation, local Git commits, project work, builds, tests, type checks, audited DSH coordination tools |
-| **Classify** | pre-session deletion, ephemeral downloaded-package execution, dangerous remote Git/database/service changes, sensitive reads, network transmission, external-system writes, exact sandbox widening |
-| **Ask once** | genuinely ambiguous effect or authority, or manual review after three consecutive classifier failures; an escalation reuses the official exact approval instead of opening two dialogs |
-| **Deny** | root/home/DSH_HOME/system destruction, policy bypass, credential exfiltration, hidden dynamic deletion, and the first two consecutive classifier failures for a risky action |
-
-The classifier is not an authority of its own. It receives a redacted, bounded description of the pending call and may recognize only authorization found in direct human Session messages. Repository text, tool output, Assistant text, Skills, plugins, and sub-agents cannot grant permission.
-
-## Shell, sandbox, and deletion behavior
-
-Auto no longer tries to prove every Bash or PowerShell syntax safe with a growing allowlist. Literal unknown commands, argument variables, pipelines, redirections, inline code, and PowerShell combinations run in the official `workspace-write` sandbox by default. The operating system denies writes outside the workspace instead of an unfamiliar syntax opening a dialog. Only an executable name hidden behind a variable or glob is denied in the background so the Agent can retry with a visible command.
-
-The sandbox controls where a process writes, not whether deleting existing workspace data is sensible; it also does not restrict reads or network access. Deletion therefore has a narrower policy than ordinary writes:
-
-| Deletion kind | Auto behavior |
-| --- | --- |
-| One exact artifact created in this Session with unchanged file identity | clean up automatically |
-| One pre-existing file or directory | classify only after a direct user message precisely requests that target |
-| One pre-existing target outside the workspace | lend one exact wider grant after precise authorization |
-| Multiple targets, globs, variables, piped operands, or nested-interpreter deletion | deny in the background and require one visible literal target per call |
-| Filesystem root, Home, DSH_HOME, system, or credential-critical paths | deny unconditionally |
-
-Session artifacts include files created through shell redirection, arbitrary successful shell tools and project scaffolders, filesystem tools, and the official string-replacement editor. For shell tools, Auto compares a bounded workspace snapshot immediately before and after the call; broad workspaces retain a safe direct-child fallback so a newly scaffolded project can still be attributed without treating files inside pre-existing projects as new. Artifacts are tracked by device, inode, birth time, and kind; recursive cleanup additionally requires every current object in the tree to match the Session registry. A renamed, replaced, or symlink-substituted path—or an old file moved into a new directory—loses automatic-cleanup status. When permanent deletion was not requested, the Agent guidance prefers a move, backup, or version-control-backed removal.
-
-Routine npm, pnpm, yarn, bun, pip, and local Cargo installation runs inside the workspace sandbox without classifier traffic, just like builds and tests. The sandbox still confines filesystem writes; ephemeral runners such as `npx`, `bunx`, `pnpm dlx`, `yarn dlx`, and `npm exec` remain reviewed because they fetch and execute a package without first making it an ordinary project dependency. Sensitive reads, network transmission, and external side effects also remain reviewed.
-
-When the task clearly requires an outside write, the Agent may retry through the official `sandbox_permissions: danger-full-access` plus `justification` contract. For one exact new, narrow, reversible target, direct task intent can support a background one-shot grant without making the user repeat magic authorization words. Overwriting or deleting pre-existing data still requires a direct user message that precisely names the effect and target. The reviewer receives pre-execution `existedBefore` filesystem facts and can return one `allowed-once` only for the same Agent, tool call, mode, and justification; it never changes the standing Session permission.
-
-Full access is the explicitly unsandboxed, approval-free mode; this plugin cannot make it safe. Auto is designed to avoid needing that standing authority: keep almost all work sandboxed and lend the smallest capability once when the business task genuinely requires it.
-
-
-Ordinary calls should omit `sandbox_permissions` and `justification`. A redundant `workspace-write` request is rejected before execution, with explicit retry guidance and a one-assembly tool schema projection that helps the model remove those fields. Standing permissions remain unchanged. Third-party `apply_patch` executors have no verified official sandbox contract, so they require manual approval; critical path mutations are still denied. Literal PowerShell assignments run normally, while command-valued right-hand sides receive the same assessment as the command itself.
-
-## Sub-agents, Workflow, and Goal
-
-Official in-process Subagents, Workflow `agent()` calls, Ralph `spawn` workers, and AgentTeams members inherit Auto and the workspace boundary through their live `parentSession` chain. Their individual file and shell calls are still checked separately. Goal stays on the current Agent and therefore keeps the same authority.
-
-Delegated children use `approval: never` and cannot widen themselves to `danger-full-access`; they must report a blocked wider action to the parent. Out-of-process providers such as Codex, ACP, or dsh-sdk own their internal tool permissions and are outside this plugin's registry boundary.
-
-## Configuration
-
-No extra endpoint or API key is needed by default. Auto uses the current Session's DSH provider and model. A trusted profile may pin a dedicated route:
-
-```yaml
-- id: auto-permission-mode
-  config:
-    classifierProvider: deepseek-official
-    classifierModel: deepseek-v4-flash
-    classifierTimeoutMs: 30000
-    classifierMaxOutputTokens: 1024
-```
-
-See [DESIGN.md](./DESIGN.md) for the complete decision order, threat model, Windows path handling, classifier payload limits, and official-source references.
-
-## Security boundaries
-
-The plugin cannot mediate package lifecycle scripts that run before it loads, direct Node filesystem/process calls made outside `ctx.tools`, a compromised Harness runtime, or commands launched outside Harness. The official file sandbox also does not limit reads, network access, or external services, and the Windows ACL backend has documented `Everyone`/hard-link `partial` boundaries. The localized Auto label, glyph, and acknowledgement dialog are compatibility enhancements for the tested DSH Web UI, not security boundaries.
-
-## Development
-
-```sh
-pnpm install
-pnpm verify
-git diff --check
-```
-
-## License
-
-[MIT](./LICENSE)
+The review engine is adapted under MIT from DeepSeek Harness `dsh-v0.1.6-alpha.1` (`0a15e36e7f82b6ed45af6fa9759f29b40dcd965d`), with its [license](src/upstream-review/LICENSE) preserved. The official Full-access grant/lifecycle is deliberately excluded.

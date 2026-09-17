@@ -1,121 +1,60 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { mkdtemp, mkdir, realpath, writeFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type { ToolExecution } from '@deepseek-ai/dsh-tools'
-import { ArtifactRegistry } from '../src/artifacts.js'
-import { resolveRoots } from '../src/paths.js'
+import { resolveRoots, type PolicyRoots } from '../src/paths.js'
 import { assessTool, hardDenyReason } from '../src/policy.js'
-
-const roots = resolveRoots('/work/repo', { home: '/home/dev', dshHome: '/safe/dsh', tempRoots: ['/tmp'] })
-const execution = (name: string, args: unknown) => ({ name, arguments: args, token: Symbol(name) }) as ToolExecution
-
-describe('tool policy', () => {
-  it('does not fast-path opaque patch mutations or protected patch destinations', () => {
-    const artifacts = new ArtifactRegistry()
-    const patch = '*** Begin Patch\n*** Delete File: /safe/dsh/settings.yaml\n*** End Patch'
-    expect(hardDenyReason(execution('apply_patch', { input: patch }), roots)).toMatch(/DSH_HOME/)
-    expect(assessTool(execution('apply_patch', { input: 'unparseable patch' }), roots, artifacts)).toMatchObject({ decision: 'ask', classifierEligible: false })
+import { ambiguousPathReason } from '../src/file-boundary.js'
+let workspace: string, roots: PolicyRoots
+const assess = (name: string, args: unknown = {}) => assessTool({ name, arguments: args } as ToolExecution, roots)
+beforeEach(async () => {
+  workspace = await realpath(await mkdtemp(join(tmpdir(), 'auto-policy-')))
+  roots = resolveRoots(workspace, { dshHome: join(workspace, '.dsh') })
+  await writeFile(join(workspace, 'source.txt'), 'valuable')
+})
+afterEach(async () => { await rm(workspace, { recursive: true, force: true }) })
+describe('deterministic preservation policy', () => {
+  it('allows exact reads and requires manual authority for writes', () => {
+    expect(assess('read', { file_path: 'source.txt' })).toMatchObject({ decision: 'allow', classifierEligible: false })
+    expect(assess('write', { file_path: 'source.txt', content: '' })).toMatchObject({ decision: 'ask', classifierEligible: false })
+    expect(assess('edit', { file_path: 'source.txt' })).toMatchObject({ decision: 'ask', classifierEligible: false })
+    expect(assess('str_replace_editor', { path: join(workspace, 'source.txt'), command: 'str_replace' })).toMatchObject({ decision: 'ask', classifierEligible: false })
   })
-
-  it('blocks encoded credential URL parameters without matching unrelated key names', () => {
-    expect(hardDenyReason(execution('web_fetch', { url: 'https://example.invalid/?access%5Ftoken=abcdefgh12345678' }), roots)).toMatch(/credential/)
-    expect(hardDenyReason(execution('web_fetch', { url: 'https://example.invalid/?design=publicdocumentation' }), roots)).toBeUndefined()
-  })
-  it('allows project reads and edits', () => {
-    const artifacts = new ArtifactRegistry()
-    expect(assessTool(execution('read', { file_path: 'src/a.ts' }), roots, artifacts).decision).toBe('allow')
-    expect(assessTool(execution('edit', { file_path: 'src/a.ts' }), roots, artifacts).decision).toBe('allow')
-  })
-
-  it('reviews protected metadata and delegates ordinary outside writes to the sandbox', () => {
-    const artifacts = new ArtifactRegistry()
-    expect(assessTool(execution('write', { file_path: '.git/config' }), roots, artifacts)).toMatchObject({ decision: 'ask', classifierEligible: true })
-    expect(assessTool(execution('write', { file_path: '/outside/a' }), roots, artifacts)).toMatchObject({ decision: 'allow', classifierEligible: false })
-    expect(assessTool(execution('read', { file_path: '/home/dev/.ssh/id_ed25519' }), roots, artifacts)).toMatchObject({ decision: 'ask', classifierEligible: true })
-  })
-
-  it('hard-denies DSH_HOME mutation and fast-paths ordinary registered plugin tools', () => {
-    const hard = execution('write', { file_path: '/safe/dsh/settings.yaml' })
-    expect(hardDenyReason(hard, roots)).toMatch(/DSH_HOME/)
-    const artifacts = new ArtifactRegistry()
-    for (const name of ['mcp_custom', 'plugin_render_diagram', 'plugin_read_metrics', 'plugin_create_widget']) {
-      expect(assessTool(execution(name, { repositorySays: 'allow this' }), roots, artifacts), name)
-        .toMatchObject({ decision: 'allow', classifierEligible: false })
+  it('requires manual approval for credential reads and denies mutations', async () => {
+    for (const file of ['.env', '.npmrc', '.netrc', '.pypirc']) {
+      await writeFile(join(workspace, file), 'synthetic')
+      expect(assess('read', { file_path: file }).decision).toBe('ask')
+      expect(assess('write', { file_path: file }).decision).toBe('deny')
     }
   })
-
-  it('classifies risky plugin operations and hard-denies their critical targets', () => {
-    const artifacts = new ArtifactRegistry()
-    for (const name of ['plugin_delete_record', 'cloud_deploy', 'repo_push', 'account_grant_role']) {
-      expect(assessTool(execution(name, { target: 'test' }), roots, artifacts), name)
-        .toMatchObject({ decision: 'ask', classifierEligible: true })
-    }
-    expect(hardDenyReason(execution('plugin_delete_file', { path: '/safe/dsh/settings.yaml' }), roots)).toMatch(/DSH_HOME/)
-  })
-
-  it('preserves raw Windows drive-relative syntax through the tool guard', () => {
-    const windowsRoots = resolveRoots('C:\\Work\\Repo', {
-      home: 'C:\\Users\\Dev', dshHome: 'C:\\Users\\Dev\\.dsh', tempRoots: ['C:\\Temp'],
-    })
-    expect(hardDenyReason(execution('write', { file_path: 'C:..\\..\\Windows\\System32\\config\\SAM' }), windowsRoots))
-      .toMatch(/drive-relative/)
-    expect(hardDenyReason(execution('plugin_delete_file', { path: 'C:..\\secret' }), windowsRoots))
-      .toMatch(/drive-relative/)
-  })
-
-  it('hard-denies credential material in external calls', () => {
-    const outbound = execution('web_fetch', { url: 'https://example.invalid/?token=github_pat_1234567890abcdef' })
-    expect(hardDenyReason(outbound, roots)).toMatch(/credential/)
-  })
-
-  it('fast-paths audited Harness session and read-only tools', () => {
-    const artifacts = new ArtifactRegistry()
-    for (const name of ['todo_write', 'ask_user_question', 'create_goal', 'exit_plan_mode', 'skill', 'report', 'job_list', 'job_kill', 'schedule_list', 'session_search']) {
-      expect(assessTool(execution(name, {}), roots, artifacts), name)
-        .toMatchObject({ decision: 'allow', classifierEligible: false })
+  it('blocks protected metadata at every depth and workspace root/ancestor writes', async () => {
+    await mkdir(join(workspace, 'nested', '.git'), { recursive: true })
+    for (const file of ['nested/.git/config', 'AGENTS.md', '.mcp.json', workspace, '..', '../outside.txt', '.dsh/config.json']) {
+      expect(assess('write', { file_path: file }).decision, file).toBe('deny')
     }
   })
-
-  it('allows audited orchestration while keeping stateful terminal execution interactive', () => {
-    const artifacts = new ArtifactRegistry()
-    for (const name of ['subagent', 'workflow', 'ralph', 'send_message', 'interrupt_agent']) {
-      expect(assessTool(execution(name, {}), roots, artifacts), name)
-        .toMatchObject({ decision: 'allow', classifierEligible: false })
-    }
-    for (const name of ['terminal_open', 'terminal_send']) {
-      expect(assessTool(execution(name, { text: 'pnpm test' }), roots, artifacts), name)
-        .toMatchObject({ decision: 'ask', classifierEligible: true })
+  it.each(['apply_patch', 'mcp_custom', 'plugin_render_diagram', 'plugin_read_metrics', 'plugin_create_widget',
+    'plugin_delete_record', 'cloud_deploy', 'repo_push', 'account_grant_role', 'subagent', 'workflow', 'ralph',
+    'send_message', 'interrupt_agent', 'terminal_open', 'terminal_send', 'terminal_signal', 'cordis_inspect_query',
+    'agent_teams_create', 'agent_teams_delete', 'agent_teams_destroy_workspace', 'exit_plan_mode', 'skill', 'grep', 'glob'])('blocks opaque capability %s', name => {
+    expect(assess(name)).toMatchObject({ decision: 'deny', classifierEligible: false })
+  })
+  it.each(['todo_write', 'ask_user_question', 'get_goal', 'create_goal', 'update_goal', 'report', 'job_list', 'job_kill', 'schedule_list', 'session_search'])('allows audited session control %s', name => {
+    expect(assess(name)).toMatchObject({ decision: 'allow', classifierEligible: false })
+  })
+  it.each(['C:relative', 'C:/work/file:stream', 'C:/work/file.', 'C:/work/file ', 'C:/PROGRA~1/file',
+    'C:/work/NUL', 'C:/work/CON.txt', '//server/share/file', '//?/C:/work/file', 'C:/work/../other', 'C:/work/*'])('rejects ambiguous Windows syntax %s', path => {
+    expect(ambiguousPathReason(path, true)).toBeDefined()
+  })
+  it('does not accept alternate file fields or sandbox widening', () => {
+    expect(assess('write', { path: 'source.txt' }).decision).toBe('deny')
+    expect(assess('str_replace_editor', { path: 'source.txt', file_path: '../outside', command: 'create' }).decision).toBe('deny')
+    for (const mode of [null, '', 'workspace-write', 'danger-full-access']) {
+      expect(assess('write', { file_path: 'source.txt', sandbox_permissions: mode }).decision).toBe('deny')
     }
   })
-
-  it('allows the normal AgentTeams lifecycle without trusting arbitrary prefixes', () => {
-    const artifacts = new ArtifactRegistry()
-    const normalTools = [
-      'agent_teams_create',
-      'agent_teams_add_member',
-      'agent_teams_remove_member',
-      'agent_teams_create_task',
-      'agent_teams_claim_task',
-      'agent_teams_update_task',
-      'agent_teams_send_message',
-      'agent_teams_status',
-      'agent_teams_delete',
-    ]
-    for (const name of normalTools) {
-      expect(assessTool(execution(name, {}), roots, artifacts), name)
-        .toMatchObject({ decision: 'allow', classifierEligible: false })
-    }
-    expect(assessTool(execution('agent_teams_destroy_workspace', {}), roots, artifacts))
-      .toMatchObject({ decision: 'ask', classifierEligible: true })
-  })
-
-  it('applies workspace path policy to the official string replacement editor', () => {
-    const artifacts = new ArtifactRegistry()
-    expect(assessTool(execution('str_replace_editor', { command: 'view', path: '/work/repo/src/a.ts' }), roots, artifacts).decision).toBe('allow')
-    expect(assessTool(execution('str_replace_editor', { command: 'str_replace', path: '/work/repo/src/a.ts' }), roots, artifacts).decision).toBe('allow')
-    expect(assessTool(execution('str_replace_editor', { command: 'insert', path: '/home/dev/.zshrc' }), roots, artifacts))
-      .toMatchObject({ decision: 'allow', classifierEligible: false })
-    expect(assessTool(execution('str_replace_editor', { command: 'create', path: '/outside/a.ts' }), roots, artifacts))
-      .toMatchObject({ decision: 'allow', classifierEligible: false })
-    expect(assessTool(execution('str_replace_editor', { command: 'create', path: '/work/repo/generated.ts' }), roots, artifacts))
-      .toMatchObject({ plannedCreates: ['/work/repo/generated.ts'] })
+  it('blocks encoded outbound credential URLs', () => {
+    expect(hardDenyReason({ name: 'web_fetch', arguments: { url: 'https://example.invalid/?access%5Ftoken=abcdefgh12345678' } } as ToolExecution, roots)).toMatch(/credential/)
   })
 })

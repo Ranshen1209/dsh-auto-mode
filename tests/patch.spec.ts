@@ -18,12 +18,12 @@ describe('patch mutation policy', () => {
     expect(parsePatchEffects(input)).toEqual([
       { kind: 'delete', path: 'a/file.txt' }, { kind: 'create-or-overwrite', path: 'b/file.txt' }, { kind: 'delete', path: 'other.txt' },
     ])
-    expect(assessTool(exec(input), roots, new ArtifactRegistry())).toMatchObject({ decision: 'ask', classifierEligible: false })
+    expect(assessTool(exec(input), roots, new ArtifactRegistry())).toMatchObject({ decision: 'deny', classifierEligible: false })
   })
-  it('requires approval for third-party native edits and alternate dialects', () => {
-    expect(assessTool(exec('*** Begin Patch\n*** Add File: src/a.ts\n+test\n*** End Patch'), roots, new ArtifactRegistry())).toMatchObject({ decision: 'ask', classifierEligible: false })
+  it('blocks third-party native edits and alternate dialects', () => {
+    expect(assessTool(exec('*** Begin Patch\n*** Add File: src/a.ts\n+test\n*** End Patch'), roots, new ArtifactRegistry())).toMatchObject({ decision: 'deny', classifierEligible: false })
     for (const input of ['--- a/x\n+++ b/x', '*** Begin Patch\n*** Add File: x\n+ok\nmalformed\n*** End Patch', '*** Begin Patch\n*** Update File: x\n*** End Patch']) {
-      expect(assessTool(exec(input), roots, new ArtifactRegistry())).toMatchObject({ decision: 'ask', classifierEligible: false })
+      expect(assessTool(exec(input), roots, new ArtifactRegistry())).toMatchObject({ decision: 'deny', classifierEligible: false })
     }
   })
   it('guards both move paths and unified critical paths even with malformed bodies', () => {

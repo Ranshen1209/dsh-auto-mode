@@ -25,8 +25,8 @@ function approval(agent: object, overrides: Partial<ApprovalRequest> = {}): Appr
   } as unknown as ApprovalRequest
 }
 
-describe('exact Auto sandbox grants', () => {
-  it('consumes one exact call-bound approval and cannot be replayed', () => {
+describe('removed automatic sandbox grants', () => {
+  it('cannot grant authority even for an exact planned call', () => {
     const grants = new AutoApprovalGrants()
     const agent = {}
     grants.plan(execution(agent), {
@@ -34,7 +34,7 @@ describe('exact Auto sandbox grants', () => {
       justification: 'write the explicitly requested external fixture',
     })
 
-    expect(grants.decide(approval(agent))).toBe('allowed-once')
+    expect(grants.decide(approval(agent))).toBeUndefined()
     expect(grants.decide(approval(agent))).toBeUndefined()
   })
 
@@ -51,7 +51,7 @@ describe('exact Auto sandbox grants', () => {
     expect(grants.decide(approval(agent, { toolName: 'write' }))).toBeUndefined()
     expect(grants.decide(approval(agent, { reason: 'escalate sandbox to workspace-write: write the explicitly requested external fixture' }))).toBeUndefined()
     expect(grants.decide(approval(agent, { reason: 'escalate sandbox to danger-full-access: a broader reason' }))).toBeUndefined()
-    expect(grants.decide(approval(agent))).toBe('allowed-once')
+    expect(grants.decide(approval(agent))).toBeUndefined()
   })
 
   it('drops an unused grant when its tool settles', () => {

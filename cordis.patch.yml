@@ -11,7 +11,7 @@
         sandbox: workspace-write
         approval: ask
         name: Auto
-        description: Workspace-sandboxed execution with automatic review and one-shot approval for wider access.
+        description: Fresh model risk and authorization review. Exact manual file edits; unisolated execution and sandbox widening are blocked.
       danger-full-access:
         sandbox: danger-full-access
         approval: never

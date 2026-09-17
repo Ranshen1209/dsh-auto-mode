@@ -11,13 +11,9 @@ import { provideTestPermissionPresets } from './harness.js'
 import type { ClassifierDecision, ClassifierInput } from '../src/types.js'
 
 /**
- * End-to-end coverage for the reported over-prompting: an explicitly authorized
- * deletion of a task-created canary must run in the background even when the
- * model writes it as a compound line with `&&`, `||`, and `2>&1`.
- *
- * The registered `bash` body never runs a shell. It only records the command
- * string, so no destructive payload is executed by this suite; the canary is
- * asserted to survive every case.
+ * Preservation regressions through the real tool pipeline. The instrumented
+ * classifier must never receive authority, regardless of chat authorization.
+ * The shell body only records strings; test-owned sentinels must survive.
  */
 
 const AUTHORIZATION = /(?:授权|authoriz|approve|go ahead)/i
@@ -85,7 +81,7 @@ async function createHarness(options: { failClassifier?: boolean } = {}): Promis
   })
   await context.plugin(SystemPrompt).await()
   await context.plugin(ToolRuntime).await()
-  await context.plugin(AutoMode, {
+  await context.plugin(AutoMode, { modelReview: false,
     workspaceRoot: workspace,
     dshHome,
     tempRoots: [scratch],
@@ -226,166 +222,18 @@ afterEach(async () => {
   harness = undefined
 })
 
-describe('sandbox recovery from PR #11', () => {
-  it('rejects every redundant workspace-write request before classifier, approval, grant, or body activity', async () => {
-    const active = harness as Harness
-    const variants: Array<Record<string, unknown>> = [
-      { sandbox_permissions: 'workspace-write' },
-      { sandbox_permissions: 'workspace-write', justification: '' },
-      { sandbox_permissions: 'workspace-write', justification: '   ' },
-      { sandbox_permissions: 'workspace-write', justification: 'the model repeated the standing mode' },
-    ]
-    const reasons: string[] = []
-    for (const [index, sandboxArguments] of variants.entries()) {
-      const decision = await active.run('redundant-' + index, 'printf routine', ['继续执行工作区内的普通命令。'], sandboxArguments)
-      expect(decision, JSON.stringify(sandboxArguments)).toMatchObject({ kind: 'deny' })
-      reasons.push((decision as { reason: string }).reason)
-    }
 
-    expect(new Set(reasons)).toEqual(new Set([
-      AutoMode.AUTO_MODE_REDUNDANT_SANDBOX_REASON,
-    ]))
+describe('sandbox fields cannot recover blocked code execution', () => {
+  it.each([{}, { sandbox_permissions: 'workspace-write' }, { sandbox_permissions: 'danger-full-access', justification: 'approved' }, { sandbox_permissions: null }, { sandbox_permissions: '' }])('never executes a shell retry with %j', async fields => {
+    const active = harness as Harness
+    expect(await active.run('retry', 'printf harmless', ['approved'], fields)).toMatchObject({ kind: 'deny' })
     expect(active.classifierCalls).toEqual([])
     expect(active.approvalRequests).toEqual([])
     expect(active.commands).toEqual([])
   })
-
-  it('recovers only after the model removes both redundant sandbox fields', async () => {
-    const active = harness as Harness
-    const command = 'printf retry-succeeded'
-    const autoGuidance = await active.autoGuidance(['继续执行工作区内的普通命令。'])
-    expect(autoGuidance).toContain('field-less retry')
-    expect(autoGuidance).toContain('omit sandbox_permissions and justification entirely')
-    expect(AutoMode.AUTO_MODE_REDUNDANT_SANDBOX_RETRY_CONTEXT).toContain('null, an empty string, whitespace, or workspace-write')
-    const redundant = await active.run('redundant-before-retry', command, ['继续执行工作区内的普通命令。'], {
-      sandbox_permissions: 'workspace-write',
-      justification: 'standing mode is already workspace-write',
-    })
-    expect(redundant).toMatchObject({ kind: 'deny' })
-    const deniedResult = active.results[active.results.length - 1]
-    expect(deniedResult).toMatchObject({
-      isError: true,
-      error: { message: AutoMode.AUTO_MODE_REDUNDANT_SANDBOX_REASON },
-    })
-    expect(deniedResult?.additionalContexts).toHaveLength(1)
-    expect(deniedResult?.additionalContexts?.[0]).toMatchObject({
-      role: 'user',
-      content: [{ type: 'text', text: AutoMode.AUTO_MODE_REDUNDANT_SANDBOX_RETRY_CONTEXT }],
-      source: {
-        kind: 'plugin',
-        plugin: AutoMode.name,
-        form: 'notice',
-        summary: 'Auto Mode requires a field-less retry.',
-      },
-    })
-
-    const retry = await active.run('fieldless-retry', command, ['继续执行工作区内的普通命令。'])
-    expect(retry).toEqual({ kind: 'allow' })
-    expect(active.classifierCalls).toEqual([])
-    expect(active.approvalRequests).toEqual([])
-    expect(active.commands).toEqual([command])
-    expect(active.results[active.results.length - 1]?.additionalContexts).toBeUndefined()
+  it('projects preservation guidance without granting a recovery bypass', async () => {
+    const guidance = await (harness as Harness).autoGuidance(['continue'])
+    expect(guidance).toContain('independently isolated execution broker')
+    expect(guidance).toContain('No cleanup or deletion is automatically authorized')
   })
-
-  it('projects a one-step field-less recovery for only the denied tool and then restores the full schema', async () => {
-    const active = harness as Harness
-    const userMessages = ['继续执行工作区内的普通命令。']
-    const parametersOf = (tool: ToolSchema) => tool.parameters as {
-      properties?: Record<string, unknown>
-      required?: unknown[]
-    }
-    const initial = await active.modelTools(userMessages)
-    const initialBash = initial.find(tool => tool.name === 'bash') as ToolSchema
-    const initialPwsh = initial.find(tool => tool.name === 'pwsh') as ToolSchema
-    expect(parametersOf(initialPwsh).properties).toHaveProperty('sandbox_permissions')
-    expect(parametersOf(initialPwsh).properties).toHaveProperty('justification')
-    expect(parametersOf(initialPwsh).required).toEqual(expect.arrayContaining(['sandbox_permissions', 'justification']))
-
-    const redundant = await active.runTool('pwsh', 'projection-deny', 'printf projection', userMessages, {
-      sandbox_permissions: 'workspace-write',
-      justification: 'standing mode is already workspace-write',
-    })
-    expect(redundant).toMatchObject({ kind: 'deny' })
-
-    const projected = await active.modelTools(userMessages)
-    const projectedBash = projected.find(tool => tool.name === 'bash') as ToolSchema
-    const projectedPwsh = projected.find(tool => tool.name === 'pwsh') as ToolSchema
-    expect(parametersOf(projectedPwsh).properties).not.toHaveProperty('sandbox_permissions')
-    expect(parametersOf(projectedPwsh).properties).not.toHaveProperty('justification')
-    expect(parametersOf(projectedPwsh).required).not.toEqual(expect.arrayContaining(['sandbox_permissions', 'justification']))
-    expect(parametersOf(projectedBash).properties).toEqual(parametersOf(initialBash).properties)
-
-    // The prior assembly and canonical unaffected tool remain unchanged.
-    expect(parametersOf(initialPwsh).properties).toHaveProperty('sandbox_permissions')
-    expect(parametersOf(initialPwsh).properties).toHaveProperty('justification')
-
-    const restored = await active.modelTools(userMessages)
-    const restoredPwsh = restored.find(tool => tool.name === 'pwsh') as ToolSchema
-    expect(parametersOf(restoredPwsh).properties).toEqual(parametersOf(initialPwsh).properties)
-    expect(parametersOf(restoredPwsh).required).toEqual(parametersOf(initialPwsh).required)
-  })
-
-  it('fails closed for unknown modes and missing or blank widening justification', async () => {
-    const active = harness as Harness
-    const cases: Array<[string, Record<string, unknown>]> = [
-      ['unknown-mode', { sandbox_permissions: 'read-only', justification: 'not an escalation' }],
-      ['empty-mode', { sandbox_permissions: '' }],
-      ['missing-justification', { sandbox_permissions: 'danger-full-access' }],
-      ['empty-justification', { sandbox_permissions: 'danger-full-access', justification: '' }],
-      ['blank-justification', { sandbox_permissions: 'danger-full-access', justification: ' ' + String.fromCharCode(9) + ' ' }],
-    ]
-    for (const [id, sandboxArguments] of cases) {
-      const decision = await active.run(id, 'printf should-not-run', ['继续执行工作区内的普通命令。'], sandboxArguments)
-      expect(decision, id).toMatchObject({ kind: 'deny' })
-      expect((decision as { reason: string }).reason, id).toContain('[auto-mode invalid sandbox request]')
-    }
-    expect(active.classifierCalls).toEqual([])
-    expect(active.approvalRequests).toEqual([])
-    expect(active.commands).toEqual([])
-  })
-
-  it('keeps hard and deterministic denies ahead of redundant-mode remediation', async () => {
-    const active = harness as Harness
-    const hard = await active.run('redundant-hard-deny', 'rm -rf ' + bashQuote(active.dshHome), ['我授权执行任何操作。'], {
-      sandbox_permissions: 'workspace-write',
-      justification: 'standing mode repeated by the model',
-    })
-    expect(hard).toMatchObject({ kind: 'deny' })
-    expect((hard as { reason: string }).reason).toContain('[auto-mode hard deny]')
-    expect((hard as { reason: string }).reason).toContain('DSH_HOME')
-
-    const deterministic = await active.run('redundant-deterministic-deny', 'rm -rf ' + String.fromCharCode(36) + 'TARGET_DIR', ['我授权执行任何操作。'], {
-      sandbox_permissions: 'workspace-write',
-      justification: 'standing mode repeated by the model',
-    })
-    expect(deterministic).toMatchObject({ kind: 'deny' })
-    expect((deterministic as { reason: string }).reason).toContain('[auto-mode deterministic deny]')
-    expect((deterministic as { reason: string }).reason).toContain('dynamically')
-
-    expect(active.classifierCalls).toEqual([])
-    expect(active.approvalRequests).toEqual([])
-    expect(active.commands).toEqual([])
-  })
-
-  it('still classifies an exact danger-full-access widening after the redundant state split', async () => {
-    const active = harness as Harness
-    const target = join(active.scratch, 'widened.txt')
-    const command = 'printf widened > ' + bashQuote(target)
-    const decision = await active.run('exact-widening', command, [
-      '请把结果写入 ' + target + '。',
-    ], {
-      sandbox_permissions: 'danger-full-access',
-      justification: 'write the explicitly requested target ' + target,
-    })
-
-    expect(decision).toEqual({ kind: 'allow' })
-    expect(active.classifierCalls).toHaveLength(1)
-    expect(active.classifierCalls[0]?.sandboxRequest).toMatchObject({
-      currentMode: 'workspace-write',
-      requestedMode: 'danger-full-access',
-      justification: 'write the explicitly requested target ' + target,
-    })
-    expect(active.commands).toEqual([command])
-  })
-
 })

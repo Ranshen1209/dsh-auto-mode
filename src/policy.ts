@@ -1,14 +1,14 @@
 import { lstatSync } from 'node:fs'
 import type { ToolExecution } from '@deepseek-ai/dsh-tools'
 import type { ArtifactRegistry } from './artifacts.js'
-import { parsePatchEffects, patchGuardPaths, patchPayload, patchPayloadsForGuard } from './patch.js'
+import { patchGuardPaths, patchPayloadsForGuard } from './patch.js'
 import {
   hardDestructiveTargetReason,
   isProtectedProjectPath,
   isWithin,
-  normalizePath,
   type PolicyRoots,
 } from './paths.js'
+import { inspectStructuredPath } from './file-boundary.js'
 import { assessShell, hardDenyShellReason } from './shell.js'
 import type { Assessment } from './types.js'
 
@@ -26,11 +26,20 @@ function record(value: unknown): Record<string, unknown> | undefined {
 }
 
 function pathArgument(args: Record<string, unknown> | undefined): string | undefined {
-  for (const key of ['file_path', 'path', 'cwd', 'workdir']) {
+  for (const key of ['file_path', 'path']) {
     const value = args?.[key]
     if (typeof value === 'string') return value
   }
   return undefined
+}
+
+export function structuredFilePath(exec: Readonly<ToolExecution>, roots: PolicyRoots): string {
+  const args = record(exec.arguments)
+  const key = exec.name === 'str_replace_editor' ? 'path' : 'file_path'
+  const path = args?.[key]
+  if (typeof path !== 'string') throw Error(`missing exact ${key}`)
+  return inspectStructuredPath(path, roots, ['write', 'edit'].includes(exec.name) ||
+    (exec.name === 'str_replace_editor' && args?.command !== 'view')).path
 }
 
 function serializedArguments(argumentsValue: unknown): string {
@@ -109,31 +118,11 @@ export function sandboxEscalationRequest(argumentsValue: unknown): SandboxEscala
 }
 
 function sensitiveReadPath(path: string): boolean {
-  return /(?:^|[\\/])(?:\.ssh|\.gnupg|\.aws|\.azure|\.kube|\.config[\\/]gh|\.docker)(?:[\\/]|$)|(?:^|[\\/])(?:id_rsa|id_ed25519|credentials|credentials\.yaml|config\.json|\.env)(?:$|[.\\/])/i.test(path)
+  return /(?:^|[\\/])(?:\.ssh|\.gnupg|\.aws|\.azure|\.kube|\.config[\\/]gh|\.docker)(?:[\\/]|$)|(?:^|[\\/])(?:id_rsa|id_ed25519|credentials|credentials\.yaml|config\.json|\.env|\.npmrc|\.netrc|\.pypirc|netrc)(?:$|[.\\/])/i.test(path)
 }
 
 const DESTRUCTIVE_TOOL = /(?:^|[_-])(?:delete|destroy|remove|erase|purge|drop|truncate|wipe|unlink|rmdir|reset|revoke)(?:$|[_-])/i
 const EXTERNAL_WRITE_TOOL = /(?:^|[_-])(?:deploy|publish|push|upload|send|post|release|merge|submit|create[-_]?(?:issue|pull[-_]?request))(?:$|[_-])/i
-const SECURITY_CHANGE_TOOL = /(?:^|[_-])(?:chmod|chown|permission|permissions|policy|grant|revoke|role|credential|credentials|secret|secrets|auth)(?:$|[_-])/i
-
-function riskyPluginToolReason(name: string): string | undefined {
-  if (DESTRUCTIVE_TOOL.test(name)) return `registered tool name indicates a destructive operation: ${name}`
-  if (EXTERNAL_WRITE_TOOL.test(name)) return `registered tool name indicates an external write: ${name}`
-  if (SECURITY_CHANGE_TOOL.test(name)) return `registered tool name indicates a security-boundary change: ${name}`
-  return undefined
-}
-
-/** Exact, audited session/control-plane tools whose effects stay in Harness state. */
-const SESSION_STATE_TOOLS = new Set([
-  'ask_user_question',
-  'todo_write',
-  'get_goal',
-  'create_goal',
-  'update_goal',
-  'exit_plan_mode',
-  'skill',
-  'report',
-])
 
 /** Read-only tools backed by owner/workspace-authorized Harness services. */
 const HARNESS_READ_TOOLS = new Set([
@@ -147,34 +136,12 @@ const HARNESS_READ_TOOLS = new Set([
   'session_event_read',
   'terminal_read',
   'terminal_list',
-  'cordis_inspect_list',
-  'cordis_inspect_query',
-  'cordis_inspect_self',
 ])
 
 /** Lifecycle controls that stop only owner-scoped background work. */
 const OWNER_CONTROL_TOOLS = new Set([
   'job_kill',
-  'terminal_signal',
   'terminal_close',
-])
-
-/**
- * Audited AgentTeams control calls. These mutate only workspace-local team
- * coordination state. Member file/shell calls are separate tool executions
- * and inherit Auto from their captain in the runtime integration.
- */
-const AGENT_TEAMS_CONTROL_TOOLS = new Set([
-  'agent_teams_create',
-  'agent_teams_add_member',
-  'agent_teams_remove_member',
-  'agent_teams_create_task',
-  'agent_teams_claim_task',
-  'agent_teams_update_task',
-  'agent_teams_send_message',
-  'agent_teams_status',
-  // The verified implementation archives team state instead of erasing it.
-  'agent_teams_delete',
 ])
 
 /** Synchronous hard-deny reason suitable for the monotonic tool guard. */
@@ -215,132 +182,63 @@ export function hardDenyReason(exec: Readonly<ToolExecution>, roots: PolicyRoots
 }
 
 /** Deterministic first-pass classification for every normal tool call. */
-export function assessTool(exec: Readonly<ToolExecution>, roots: PolicyRoots, artifacts: ArtifactRegistry): Assessment {
+export function assessTool(exec: Readonly<ToolExecution>, roots: PolicyRoots, artifacts?: ArtifactRegistry): Assessment {
   const hard = hardDenyReason(exec, roots)
   if (hard !== undefined) return { decision: 'deny', reason: hard, classifierEligible: false }
+  const sandbox = sandboxRequestState(exec.arguments)
+  if (sandbox.kind !== 'absent') {
+    return { decision: 'deny', reason: 'Auto does not grant sandbox escalation; remove redundant sandbox fields for ordinary structured tools', classifierEligible: false }
+  }
   const args = record(exec.arguments)
-  const owner = exec.agent?.session
-
-  if ((exec.name === 'bash' || exec.name === 'pwsh') && typeof args?.command === 'string') {
-    return assessShell(args.command, exec.name, roots, artifacts, owner)
-  }
   if (exec.name === 'bash' || exec.name === 'pwsh') {
-    return { decision: 'ask', reason: `${exec.name} command argument is missing or invalid`, classifierEligible: false }
+    return typeof args?.command === 'string'
+      ? assessShell(args.command, exec.name, roots, artifacts, exec.agent?.session)
+      : { decision: 'deny', reason: 'shell command is missing or invalid', classifierEligible: false }
   }
-
-  const readTools = new Set(['read', 'read_image', 'grep', 'glob', 'lsp'])
-  if (readTools.has(exec.name)) {
-    const path = pathArgument(args)
-    if (path === undefined) return { decision: 'allow', reason: 'read-only project inspection', classifierEligible: false }
-    const normalized = normalizePath(path, roots.workspace, roots.home)
-    return !isWithin(roots.workspace, normalized) && sensitiveReadPath(normalized)
-      ? { decision: 'ask', reason: `reading sensitive data outside the workspace requires semantic review: ${normalized}`, classifierEligible: true }
-      : { decision: 'allow', reason: 'read-only inspection without a sensitive credential target', classifierEligible: false }
-  }
-
-  if (exec.name === 'write' || exec.name === 'edit') {
-    const path = pathArgument(args)
-    if (path === undefined) return { decision: 'ask', reason: `${exec.name} target path is missing`, classifierEligible: false }
-    const normalized = normalizePath(path, roots.workspace, roots.home)
-    if (isProtectedProjectPath(normalized, roots)) {
-      return {
-        decision: 'ask', reason: `mutation of protected project metadata requires specific user authorization: ${normalized}`, classifierEligible: true,
-        filesystemEffects: [{ kind: 'create-or-overwrite', path: normalized, existedBefore: existedBefore(normalized) }],
-      }
+  const path = pathArgument(args)
+  if (typeof args?.path === 'string' && typeof args?.file_path === 'string' && args.path !== args.file_path) return { decision: 'deny', reason: 'ambiguous target fields', classifierEligible: false }
+  const view = exec.name === 'str_replace_editor' && args?.command === 'view'
+  if (['read', 'read_image'].includes(exec.name) || view) {
+    if (path === undefined || path.trim() === '') return { decision: 'deny', reason: 'read target is missing', classifierEligible: false }
+    let normalized: string
+    try { normalized = structuredFilePath(exec, roots) }
+    catch (error) { return { decision: 'deny', reason: `unverifiable file boundary: ${String(error)}`, classifierEligible: false } }
+    if (!isWithin(roots.workspace, normalized) || sensitiveReadPath(normalized)) {
+      return { decision: 'ask', reason: 'reading outside the workspace or reading credentials requires exact manual approval', classifierEligible: false }
     }
-    const targetExisted = existedBefore(normalized)
+    return { decision: 'allow', reason: 'structured workspace file read', classifierEligible: false }
+  }
+  if (['grep', 'glob'].includes(exec.name)) {
+    return { decision: 'deny', reason: 'recursive search cannot verify every link and credential boundary; use exact structured file reads', classifierEligible: false }
+  }
+  if (['write', 'edit', 'str_replace_editor'].includes(exec.name)) {
+    if (path === undefined || path.trim() === '') return { decision: 'deny', reason: 'mutation target is missing', classifierEligible: false }
+    if (exec.name === 'str_replace_editor' && !['create', 'str_replace', 'insert'].includes(String(args?.command))) {
+      return { decision: 'deny', reason: 'unrecognized editor operation', classifierEligible: false }
+    }
+    let normalized: string
+    try { normalized = structuredFilePath(exec, roots) }
+    catch (error) { return { decision: 'deny', reason: `unverifiable file boundary: ${String(error)}`, classifierEligible: false } }
+    if (!isWithin(roots.workspace, normalized) || isProtectedProjectPath(normalized, roots) || sensitiveReadPath(normalized)) {
+      return { decision: 'deny', reason: 'Auto cannot mutate outside-workspace files, credentials or executable security metadata', classifierEligible: false }
+    }
     return {
-      decision: 'allow',
-      reason: isWithin(roots.workspace, normalized)
-        ? 'routine project-local file edit'
-        : 'external mutation is delegated to the workspace-write filesystem sandbox',
-      classifierEligible: false,
-      ...(targetExisted ? {} : { plannedCreates: [normalized] }),
-      filesystemEffects: [{ kind: 'create-or-overwrite', path: normalized, existedBefore: targetExisted }],
+      decision: 'ask', reason: 'exact structured file modification requires manual approval; no model or conversation text can grant it', classifierEligible: false,
+      filesystemEffects: [{ kind: 'create-or-overwrite', path: normalized, existedBefore: existedBefore(normalized) }],
     }
   }
+  if (['ask_user_question', 'todo_write', 'get_goal', 'create_goal', 'update_goal', 'report'].includes(exec.name)
+    || HARNESS_READ_TOOLS.has(exec.name) || OWNER_CONTROL_TOOLS.has(exec.name)) {
+    return { decision: 'allow', reason: 'trusted Harness inspection or session control without arbitrary code execution', classifierEligible: false }
+  }
+  return { decision: 'deny', reason: `Auto has no verified non-destructive execution contract for tool: ${exec.name}`, classifierEligible: false }
+}
 
-
-  if (exec.name === 'apply_patch') {
-    const effects = parsePatchEffects(patchPayload(exec.arguments) ?? '')
-    if (effects === undefined) return { decision: 'ask', reason: 'apply_patch targets cannot be fully parsed; explicit review required', classifierEligible: false }
-    const filesystemEffects = effects.map(effect => {
-      const path = normalizePath(effect.path, roots.workspace, roots.home)
-      return { kind: effect.kind, path, existedBefore: existedBefore(path) }
-    })
-    return {
-      decision: 'ask',
-      reason: 'third-party apply_patch execution has no verified Harness filesystem sandbox; explicit approval is required',
-      classifierEligible: false,
-      filesystemEffects,
-    }
-  }
-
-  if (exec.name === 'str_replace_editor') {
-    const command = args?.command
-    const path = typeof args?.path === 'string' ? args.path : undefined
-    if (!['view', 'create', 'str_replace', 'insert'].includes(String(command))) {
-      return { decision: 'ask', reason: 'str_replace_editor command is missing or invalid', classifierEligible: false }
-    }
-    if (path === undefined) {
-      return { decision: 'ask', reason: 'str_replace_editor target path is missing', classifierEligible: false }
-    }
-    const normalized = normalizePath(path, roots.workspace, roots.home)
-    if (command === 'view') {
-      return !isWithin(roots.workspace, normalized) && sensitiveReadPath(normalized)
-        ? { decision: 'ask', reason: `reading sensitive data outside the workspace requires semantic review: ${normalized}`, classifierEligible: true }
-        : { decision: 'allow', reason: 'read-only inspection without a sensitive credential target', classifierEligible: false }
-    }
-    if (isProtectedProjectPath(normalized, roots)) {
-      return {
-        decision: 'ask', reason: `mutation of protected project metadata requires specific user authorization: ${normalized}`, classifierEligible: true,
-        filesystemEffects: [{ kind: 'create-or-overwrite', path: normalized, existedBefore: existedBefore(normalized) }],
-      }
-    }
-    const targetExisted = existedBefore(normalized)
-    return {
-      decision: 'allow',
-      reason: isWithin(roots.workspace, normalized)
-        ? 'routine project-local file edit'
-        : 'external mutation is delegated to the workspace-write filesystem sandbox',
-      classifierEligible: false,
-      ...(command === 'create' && !targetExisted ? { plannedCreates: [normalized] } : {}),
-      filesystemEffects: [{ kind: 'create-or-overwrite', path: normalized, existedBefore: targetExisted }],
-    }
-  }
-
-  if (SESSION_STATE_TOOLS.has(exec.name)) {
-    return { decision: 'allow', reason: 'trusted Harness session-state operation', classifierEligible: false }
-  }
-  if (HARNESS_READ_TOOLS.has(exec.name)) {
-    return { decision: 'allow', reason: 'trusted read-only Harness operation', classifierEligible: false }
-  }
-  if (AGENT_TEAMS_CONTROL_TOOLS.has(exec.name)) {
-    return { decision: 'allow', reason: 'trusted AgentTeams coordination operation', classifierEligible: false }
-  }
-  if (OWNER_CONTROL_TOOLS.has(exec.name)) {
-    return { decision: 'allow', reason: 'trusted owner-scoped lifecycle control', classifierEligible: false }
-  }
-
-  // Persistent terminals retain cwd, environment, aliases, and interpreter
-  // state across calls. A standalone text fragment cannot be parsed with the
-  // same guarantees as one Bash/PowerShell invocation, so never fast-path it.
-  if (exec.name === 'terminal_open' || exec.name === 'terminal_send') {
-    return { decision: 'ask', reason: 'stateful terminal execution requires semantic review because prior shell state is hidden', classifierEligible: true }
-  }
-
-  if (['web_search', 'web_fetch', 'time', 'weather'].includes(exec.name)) {
-    return { decision: 'allow', reason: 'read-only external information lookup', classifierEligible: false }
-  }
-  if (['subagent', 'workflow', 'ralph', 'spawn_agent', 'send_message', 'wait_agent', 'list_agents', 'interrupt_agent', 'read_thread', 'wait_threads'].includes(exec.name)) {
-    return { decision: 'allow', reason: 'orchestration call; child tool actions remain independently checked', classifierEligible: false }
-  }
-  if (['git_push', 'deploy', 'publish', 'send_email', 'create_issue', 'create_pull_request'].includes(exec.name)) {
-    return { decision: 'ask', reason: `external write requires specific user authorization: ${exec.name}`, classifierEligible: true }
-  }
-  const riskyReason = riskyPluginToolReason(exec.name)
-  if (riskyReason !== undefined) {
-    return { decision: 'ask', reason: riskyReason, classifierEligible: true }
-  }
-  return { decision: 'allow', reason: `ordinary registered plugin tool: ${exec.name}`, classifierEligible: false }
+/** Full file identity included in the exact manual approval, never in model input. */
+export function fileApprovalIdentity(exec: Readonly<ToolExecution>, roots: PolicyRoots): string | undefined {
+  if (!['read', 'read_image', 'write', 'edit', 'str_replace_editor'].includes(exec.name)) return undefined
+  const args = record(exec.arguments)
+  const path = structuredFilePath(exec, roots)
+  const mutation = ['write', 'edit'].includes(exec.name) || (exec.name === 'str_replace_editor' && args?.command !== 'view')
+  return inspectStructuredPath(path, roots, mutation).identity
 }

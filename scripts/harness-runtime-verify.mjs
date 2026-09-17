@@ -94,7 +94,7 @@ async function installRuntime(version) {
   json(join(reportDir, 'registry-cohort.json'), { registry: 'https://registry.npmjs.org', version, packages: [...packages.values()].map(pkg => ({ name: pkg.name, version: pkg.version, gitHead: pkg.gitHead, integrity: pkg.dist?.integrity })) })
   json(join(runtime, 'package.json'), { name: 'auto-mode-product-runtime-test', version: '0.0.0', private: true, type: 'module', dependencies: { '@deepseek-ai/dsh': version }, overrides: Object.fromEntries([...packages.keys()].map(name => [name, version])) })
   const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm'
-  const installed = await runCommand(npm, ['install', '--no-audit', '--no-fund', '--registry=https://registry.npmjs.org', '--userconfig=' + emptyNpmConfig], runtime, environment({ npm_config_cache: join(reportDir, 'npm-cache') }), 'install', 900000)
+  const installed = await runCommand(npm, ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--registry=https://registry.npmjs.org', '--userconfig=' + emptyNpmConfig], runtime, environment({ npm_config_cache: join(reportDir, 'npm-cache') }), 'install', 900000)
   if (installed.code !== 0 || installed.timedOut) throw Error('Exact runtime install failed; inspect install.stderr.log')
 }
 
@@ -114,19 +114,19 @@ try {
   const pluginManifest = JSON.parse(readFileSync(join(artifactRoot, 'package.json'), 'utf8'))
   if (pluginManifest.name !== PLUGIN) throw Error('Not an Auto Mode package artifact')
   if (existsSync(join(artifactRoot, 'node_modules'))) throw Error('Package unexpectedly includes node_modules')
-  symlinkSync(join(runtime, 'node_modules'), join(artifactRoot, 'node_modules'), 'dir')
+  symlinkSync(join(runtime, 'node_modules'), join(artifactRoot, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir')
   const home = join(reportDir, 'home'), profile = join(home, 'profiles/headless')
   mkdirSync(join(profile, 'node_modules/@nanmicoder'), { recursive: true })
-  symlinkSync(artifactRoot, join(profile, 'node_modules/@nanmicoder/dsh-auto-mode'), 'dir')
-  symlinkSync(join(runtime, 'node_modules/@deepseek-ai'), join(profile, 'node_modules/@deepseek-ai'), 'dir')
-  const yaml = createRequire(join(runtime, 'package.json'))('yaml')
+  symlinkSync(artifactRoot, join(profile, 'node_modules/@nanmicoder/dsh-auto-mode'), process.platform === 'win32' ? 'junction' : 'dir')
+  symlinkSync(join(runtime, 'node_modules/@deepseek-ai'), join(profile, 'node_modules/@deepseek-ai'), process.platform === 'win32' ? 'junction' : 'dir')
+  const yaml = createRequire(createRequire(join(runtime, 'package.json')).resolve('@deepseek-ai/dsh/package.json'))('js-yaml')
   json(join(profile, 'package.json'), { name: 'auto-mode-product-test-profile', version: '0.0.0', private: true, type: 'module', dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-headless', PLUGIN], patchReload: 'startup' } } })
-  const pluginPatch = yaml.parse(readFileSync(join(artifactRoot, 'cordis.patch.yml'), 'utf8'))
+  const pluginPatch = yaml.load(readFileSync(join(artifactRoot, 'cordis.patch.yml'), 'utf8'))
   const permission = pluginPatch.find(patch => patch.id === 'permission')?.config
   if (!permission?.presets?.auto) throw Error('Artifact does not declare the Auto permission preset')
   const fixture = join(profile, 'auto-mode-fixture.mjs')
   copyFileSync(join(scriptRoot, 'fixtures/harness-runtime-llm.mjs'), fixture)
-  writeFileSync(join(profile, 'cordis.patch.yml'), yaml.stringify([
+  writeFileSync(join(profile, 'cordis.patch.yml'), yaml.dump([
     { id: 'permission', config: { ...permission, defaultPreset: 'auto' } },
     { id: 'llm-deepseek', disabled: true },
     { id: 'llm-pi-ai', disabled: true },
@@ -144,46 +144,43 @@ try {
   writeFileSync(protectedPath, protectedValue)
   const tracePath = join(reportDir, 'trace.jsonl')
   const env = environment({ DSH_HOME: home, DSH_TELEMETRY_DISABLED: '1', DSH_PERMISSION_MODE: 'workspace-write', AUTO_FIXTURE_TRACE: tracePath, AUTO_FIXTURE_EFFECTS: effects, AUTO_FIXTURE_PROTECTED: protectedPath })
-  const cwd = '/tmp'
-  if (!existsSync(cwd)) throw Error('Fixture needs an existing /tmp workspace')
-  const args = [doctor.host.bin, '--profile', 'headless', 'Execute the authorized deterministic Auto Mode product fixture in the existing /tmp workspace. Test only the isolated fixture files and report the results.']
+  const cwd = process.platform === 'win32' ? effects : '/tmp'
+  if (!existsSync(cwd)) throw Error('Fixture workspace is unavailable')
+  writeFileSync(join(effects, 'existing.txt'), 'valuable')
+  const args = [doctor.host.bin, '--profile', 'headless', 'Execute the authorized deterministic Auto Mode product fixture in the isolated fixture workspace. Test only the isolated fixture files and report the results.']
   json(join(reportDir, 'launch.json'), { version, pluginVersion: pluginManifest.version, command: process.execPath, args, cwd, runtime: realpathSync(runtime), profile, artifactSha256, model: 'deterministic fixture', realApi: false, fixtureSha256: sha256(fixture), runnerSha256, doctorSha256 })
   const run = await runCommand(process.execPath, args, cwd, env, 'host', timeoutMs)
   const trace = existsSync(tracePath) ? readFileSync(tracePath, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line)) : []
   const resultFor = label => trace.find(event => event.event === 'tool-result' && event.label === label)
   const modelFor = label => trace.find(event => event.event === 'model-request' && event.step === label)
   const contents = file => existsSync(join(effects, file)) ? readFileSync(join(effects, file), 'utf8') : undefined
-  const expectedResults = { ordinary: false, redundant: true, recovery: false, 'classifier-allow': false, 'classifier-deny': true, 'classifier-ask': true, 'hard-deny': true, delegation: false, 'child-ordinary': false, 'child-widening': true, 'classifier-error-1': true, 'classifier-error-2': true, 'classifier-error-3': true }
+  const expectedResults = { read: false, 'model-denied': true, 'model-error': true, 'model-invalid': true, 'edit-approved': false, 'write-approved': false, 'write-rejected': true, ordinary: true, widening: true, cleanup: true, delegation: true }
   const asked = trace.filter(event => event.event === 'approval/asked')
   const decisions = trace.filter(event => event.event === 'approval/decided')
-  const exactAllowAsk = asked.find(event => String(event.data.callId).endsWith('-classifier-allow'))
-  const exactAllowDecision = decisions.find(event => event.data.id === exactAllowAsk?.data.id)
   const assertions = {
     verificationCodeUnchanged: sha256(fileURLToPath(import.meta.url)) === runnerSha256 && sha256(join(scriptRoot, 'harness-doctor.mjs')) === doctorSha256,
     normalExit: run.code === 0 && !run.timedOut,
     noRemainingProcessGroup: !run.remainingProcessGroup,
     productMarker: run.stdout.includes('AUTO_MODE_PRODUCT_FIXTURE_OK'),
-    fixtureActive: trace.some(event => event.event === 'fixture-activated' && event.realApi === false && ['/tmp', '/private/tmp'].includes(event.process.cwd)),
+    fixtureActive: trace.some(event => event.event === 'fixture-activated' && event.realApi === false && resolve(event.process.cwd) === resolve(cwd)),
     activeServiceIdentitiesMatch: Object.values(trace.find(event => event.event === 'fixture-activated')?.servicesMatchResolvedClasses ?? {}).length === 3 && Object.values(trace.find(event => event.event === 'fixture-activated')?.servicesMatchResolvedClasses ?? {}).every(Boolean) && trace.filter(event => event.event === 'tool-result').every(event => event.sessionIdentityMatches === true),
     allToolsSettledCorrectly: Object.entries(expectedResults).every(([label, expected]) => resultFor(label)?.isError === expected),
-    ordinaryFile: contents('ordinary.txt') === 'ordinary\n',
-    fieldlessRetryExecuted: contents('recovery.txt') === 'recovery\n',
-    exactAllowExecuted: contents('allowed.txt') === 'classifier-allow\n',
-    childExecuted: contents('child.txt') === 'child-ordinary\n',
-    deniedEffectsAbsent: ['denied.txt', 'asked.txt', 'error-1.txt', 'error-2.txt', 'error-3.txt', 'child-widening.txt'].every(file => contents(file) === undefined),
+    approvedEdit: contents('existing.txt') === 'approved',
+    approvedCreate: contents('approved.txt') === 'approved new file',
+    rejectedWriteAbsent: contents('denied.txt') === undefined,
     canaryUnchanged: readFileSync(protectedPath, 'utf8') === protectedValue,
-    allSessionCwdExistingTmp: trace.filter(event => event.event === 'tool-result').every(event => event.cwd === '/tmp' || event.cwd === '/private/tmp'),
-    parentAutoActive: trace.filter(event => event.event === 'tool-result' && !event.child).every(event => event.preset === 'auto'),
-    childInheritedGuidance: modelFor('child-ordinary')?.autoGuidance === true,
-    recoverySchemaFieldsRemoved: modelFor('recovery')?.bashHasSandboxField === false,
-    ordinarySchemaFieldsRestored: modelFor('classifier-allow')?.bashHasSandboxField === true,
-    classifierRouteReused: trace.filter(event => event.event === 'classifier-request').length === 6 && trace.filter(event => event.event === 'classifier-request').every(event => event.provider === 'auto-mode-fixture' && event.model === 'deterministic' && event.directUserMessages.some(text => text.includes('authorized deterministic Auto Mode'))),
-    oneShotGrantAudited: exactAllowAsk !== undefined && exactAllowDecision?.data.outcome === 'allowed-once' && asked.length === 3 && decisions.length === 3,
-    manualAnswererUsedOnlyForAsks: trace.filter(event => event.event === 'manual-approval').map(event => event.label).sort().join(',') === 'classifier-ask,classifier-error-3',
+    allSessionCwdMatches: trace.filter(event => event.event === 'tool-result').every(event => resolve(event.cwd) === resolve(cwd)),
+    parentAutoActive: trace.filter(event => event.event === 'tool-result').every(event => event.preset === 'auto'),
+    autoGuidancePresent: trace.filter(event => event.event === 'model-request').every(event => event.autoGuidance === true),
+    eachAdmissibleCallReviewed: trace.filter(event => event.event === 'model-review').length === 7,
+    reviewRouteMatchesTask: trace.filter(event => event.event === 'model-review').every(event => event.provider === 'auto-mode-fixture' && event.model === 'deterministic'),
+    modelFailuresPreserveFiles: ['model-denied', 'model-error', 'model-invalid'].every(label => contents(label + '.txt') === undefined),
+    manualDecisionsAudited: asked.length === 3 && decisions.length === 3 && decisions.filter(event => event.data.outcome === 'allowed-once').length === 2 && decisions.filter(event => event.data.outcome === 'rejected').length === 1,
+    exactManualCallsOnly: trace.filter(event => event.event === 'manual-approval').map(event => event.label).sort().join(',') === 'edit-approved,write-approved,write-rejected',
   }
   const processIdentity = trace.find(event => event.event === 'fixture-activated')?.process
   assertions.actualProcessMatchesLaunch = processIdentity?.pid === run.pid && processIdentity?.node === process.version
-  final = { passed: Object.values(assertions).every(Boolean), kind: 'real-product-entry-with-fixture-model', realApi: false, version, pluginVersion: pluginManifest.version, artifactSha256, fixtureSha256: sha256(fixture), runnerSha256, doctorSha256, node: process.version, platform: process.platform, runtime, profile, cwd, processIdentity, cohortCount: doctor.installedCohortCount, exit: { code: run.code, signal: run.signal, timedOut: run.timedOut, remainingProcessGroup: run.remainingProcessGroup }, assertions, toolResults: trace.filter(event => event.event === 'tool-result'), unverified: ['real provider APIs', 'browser interaction', 'PowerShell and Windows sandbox', 'live user-data migration'] }
+  final = { passed: Object.values(assertions).every(Boolean), kind: 'real-product-entry-with-fixture-model', realApi: false, version, pluginVersion: pluginManifest.version, artifactSha256, fixtureSha256: sha256(fixture), runnerSha256, doctorSha256, node: process.version, platform: process.platform, runtime, profile, cwd, processIdentity, cohortCount: doctor.installedCohortCount, exit: { code: run.code, signal: run.signal, timedOut: run.timedOut, remainingProcessGroup: run.remainingProcessGroup }, assertions, toolResults: trace.filter(event => event.event === 'tool-result'), unverified: ['real provider APIs', 'browser interaction', 'macOS and Linux runtime; native sandbox confinement (shells are blocked before launch)', 'live user-data migration'] }
 } catch (error) {
   final = { passed: false, kind: 'real-product-entry-with-fixture-model', realApi: false, artifactSha256, runtime, error: error.stack ?? error.message }
 }

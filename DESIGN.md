@@ -1,97 +1,43 @@
-# Design and threat model
+# Preservation-first Auto design
 
-## Scope
+The policy protects existing data from model-generated or inferred execution authority. It trades unattended builds and shell convenience for deterministic rejection when independent isolation cannot be established. No language-model classifier is an authorization source.
 
-`dsh-auto-mode` adds an `Auto` permission preset, a Host policy on the official `ctx.tools` pipeline, and a small Web UI decorator. It does not provide its own executor or sandbox. Calls outside a Session whose durable preset is `auto` retain the official Read Only, Workspace Write, or Full access behavior.
+## Decision and commit chain
 
-The implementation is built and tested against the exact public Harness cohorts listed in [compatibility.json](./compatibility.json) — currently `0.1.5-rc.1` plus the four retained `0.1.2-*` hosts. The design was originally written against `dsh-v0.1.2-alpha.2` at `0a53fb55bea101816fa226bb964ae2bed71c343b`; the seams below survived `0.1.5-rc.1` unchanged, as recorded in the [0.1.5-rc.1 upgrade record](./docs/harness-0.1.5-rc.1-upgrade-2026-09-14/README.md). The relevant upstream seams are:
+1. Resolve the active Auto authority, including live delegated lineage. Record each observed call token, actor and permission-event history, including calls initially denied. Changing modes and changing back does not revive a pending call.
+2. Reject unverified capabilities by default. Exact audited session tools and structured workspace reads are the narrow automatic surface. Reads and edits must use the real tool's parameter name; conflicting aliases cannot choose a different approval target.
+3. Check raw paths before normalization, then every filesystem ancestor and the final regular file. Reject ambiguous Win32/NT/UNC/drive-relative/ADS/short-name/device paths, links/junctions, multiple file links, protected metadata and inaccessible paths. File reads/identity hashes are bounded to 16 MiB.
+4. Review the complete pending action using the official source-role partition of logged instructions and facts. Exclude assistant text and tool results as authorization; project content may only restrict scope. Require a new model allow for each call, without inheriting Full access. For every structured file operation, require the backend’s explicit host-file mapping contract; identical path strings in a remote filesystem are insufficient. For exact structured edits, capture the backend target and file version. Ask the official approval service with the original callId. Only `allowed-once` succeeds; rejection, cancellation, unavailability, exception or a 120-second timeout denies. Delegated agents cannot ask for their own approval.
+5. A monotonic tool guard checks the deterministic policy after the extensible pre-execute waterfall. A separate dispatch check detects changed authority/arguments and repeated around-tool dispatch. A different pre-execute listener returning allow cannot supply a missing manual ticket.
+6. At `fs/write-intent` / `fs/edit-intent`, require the same authority, full argument/target/content fingerprint, backend identity, target key and unspent ticket. Preserve stronger observation-policy constraints. Supply `createIfAbsent` or `replaceIfVersion` to the official provider, then spend the ticket. The provider rejects tested stale writes even if another intent wrapper waits after approval.
+7. Dispose pending approval requests and clear in-flight records when the plugin stops. Other permission modes, plugin unloading and already-running external processes are outside this policy. Do not unload/reconfigure standalone protection while work is in flight. The bundled desktop adds a persistent host prepare/dispatch/file-intent gate, binds each policy epoch, and rechecks at the registry body entry even when a wrapper replaces its cancellation signal.
 
-- `@deepseek-ai/dsh-permission-presets` for durable preset selection;
-- `@deepseek-ai/dsh-sandbox-policy` and the sandboxed shell/filesystem providers for per-call file authority;
-- `tools/pre-execute` plus the monotonic `ctx.tools.guard()` for semantic policy;
-- `ctx.approval` and its exact `allowed-once` result for sandbox widening;
-- `ctx.llm.stream()` for an independent semantic reviewer.
+Approval hashes cover complete arguments, not the old classifier's truncated/redacted representation. They remain local. Payloads over the complete-call limit are denied. No whole-workspace artifact scans occur. The adapted official review engine calls the active agent model once per admissible candidate, before any manual prompt. A strict closed JSON/stream parser, deadline and complete snapshot fingerprint make failure or changed inputs a denial. The review ticket expires after 120 seconds and is deleted at the call result. Old `ArtifactRegistry` and `AutoApprovalGrants` exports are non-authorizing compatibility shims; standalone legacy classifier utilities are not invoked by `apply`.
 
-## Permission integration
+## Audit findings and changes
 
-The bundle inserts Auto between Workspace Write and Full access:
+The baseline allowed arbitrary build/install/script execution and unknown plugin tools, inferred authorization through model classification, and promoted session artifacts into automatic deletion eligibility. Extension aliases such as `curl.exe`, Git options before subcommands, inline Node/Python and long-command tails demonstrated why lexical classification cannot establish runtime effects.
 
-| Preset | Sandbox | Approval |
+Independent adversarial review reproduced a preset-change/pre-execute-wrapper bypass and a `file_path` versus `path` confusion with the real string editor. These are covered by regressions. The review also demonstrated that a host around-tool wrapper can call the body twice after a single guard; dispatch and filesystem commit checks now enforce one spent approval in tested wrappers.
+
+## Trusted computing base and remaining boundaries
+
+The trusted base includes the configured 0.1.5-rc.1 Harness composition, actual tool implementations, local filesystem provider, approval service and human-facing answerer. A same-name scoped tool can be replaced by a plugin, and a different answerer can fabricate `allowed-once`; this API provides no cryptographic human-attestation channel. This plugin does not defend against arbitrary malicious code in the host process.
+
+File identity/hash and provider version checks are not kernel-level path capabilities. Content changes to the same file or directory replacement by an external process after the last check, OS/backend defects, hostile volumes, compromised plugins, direct filesystem calls, startup lifecycle scripts, disabled/unloaded protection and actions outside Auto cannot be eliminated here. Independent review reproduced an external same-file write during the official provider’s temporary-file publication hook being overwritten despite replaceIfVersion. The version check occurs before final publication; it is not an OS-level compare-and-swap. No claim of absolute safety is made. A plugin load error can leave host UI configuration visible; stop the session on backend load failure. A future executor must be independently isolated and validated before any arbitrary execution is re-enabled, with no host disk shares or credentials and explicit controlled output import.
+
+## Public evidence and sources
+
+The following are **public user reports**, open when retrieved on 2026-09-17. They are not vendor-confirmed findings, independently verified incident histories, or prevalence estimates. We did not reproduce destructive commands on real data.
+
+| Source | Reported mechanism | Design consequence |
 | --- | --- | --- |
-| Read Only | `read-only` | `ask` |
-| Workspace Write | `workspace-write` | `ask` |
-| Auto | `workspace-write` | `ask` |
-| Full access | `danger-full-access` | `never` |
+| [Codex #43343](https://github.com/openai/codex/issues/43343) | Windows cleanup fallback into nested CMD quoting reportedly broadened deletion beyond the project | Block all shell cleanup and cross-shell fallbacks |
+| [Codex #42355](https://github.com/openai/codex/issues/42355) | `git clean -fdX` on ignored nested paths reportedly removed an ignored parent with secrets | No automatic Git cleanup or inferred target scope |
+| [Claude Code #94453](https://github.com/anthropics/claude-code/issues/94453) | A copy task reportedly became unrequested PowerShell destination deletion | Copy/build intent never implies deletion authority |
+| [Claude Code #82165](https://github.com/anthropics/claude-code/issues/82165) | Outer-shell expansion reportedly transformed nested cleanup into broad removal with writable WSL Windows mounts | No interpreter allowlist; no shared writable host drives in any future executor |
+| [Claude Code #91599](https://github.com/anthropics/claude-code/issues/91599) | A clarification was reportedly mistaken for external-drive wipe authorization | Conversation text cannot mint approvals |
 
-Auto and Workspace Write share a standing file boundary but not behavior. Auto automatically reviews semantic risks and may bridge one approved `danger-full-access` retry into the official approval seam. Full access remains the explicit unsandboxed mode and bypasses this plugin.
+`Remove-Item` generally does not use the Recycle Bin; `-Force` is not the determining distinction. A search of the public DeepSeek Harness issues did not find a directly corroborated Windows deletion incident; that is not evidence of absence, particularly because upstream also uses Discussions.
 
-Normal Agent calls derive `workspaceRoot` from the Session's immutable canonical cwd. A command-level `workdir` can change process cwd but cannot change the sandbox write root. The official sandbox limits filesystem writes only: reads, sockets, process visibility, external services, and destructive changes inside the workspace require separate policy where their semantics matter. Linux bwrap/Landlock and macOS Seatbelt provide OS enforcement; the Windows restricted-token/ACL runner reports `partial` enforcement because of its documented `Everyone`, hard-link, and non-ACL-volume boundaries.
-
-The Web decorator registers English and Chinese copy with the official locale service. English keeps the Auto label and Chinese renders it as “自动审批” across both permission selectors, the active-mode control, and the `/permission` picker; the acknowledgement follows the same live locale. The decorator also supplies the missing glyph. It explains the standing workspace sandbox, exact wider approval, read/network limitations, Windows partial enforcement, and out-of-pipeline plugin boundary. This UI is explanatory, not an authorization boundary.
-
-## Decision order
-
-1. Calls outside Auto delegate unchanged. Auto calls first pass a synchronous monotonic guard for filesystem-root, Home, DSH_HOME, operating-system destruction, privilege/policy bypass, and explicit credential-exfiltration patterns. No later listener or classifier can override the guard.
-2. Ordinary shell and filesystem work runs under `workspace-write` without proving the syntax against an allowlist. Literal unknown executables, argument variables, compound lines, pipelines, redirections, inline scripts, PowerShell assignments, and a different process cwd do not trigger review merely because static parsing is incomplete. A dynamically produced executable name is denied so its effects cannot hide behind a variable or glob.
-3. Deterministic effect checks still identify a small set of semantic risks the file boundary does not solve: pre-session or unobserved deletion inside the workspace, protected repository metadata, dangerous remote Git operations, ephemeral downloaded-package execution, database/service/infrastructure mutation, sensitive credential reads, network transmission, external-system writes, and stateful terminal execution. Routine dependency installation and local Git commits stay on the sandboxed fast path.
-4. Hidden, dynamic, globbed, piped, nested-interpreter, or multi-target deletion is denied with a reason that tells the Agent to replan as one visible literal target per call. This avoids both a popup and classifier authority over an unknowable or generalized destructive target. Exact cleanup of one artifact created and observed during the live Session remains a fast path only while its device, inode, birth time, and kind still match. Direct filesystem/editor operations use planned-create facts; arbitrary successful shell calls additionally use a bounded before/after workspace snapshot, with a direct-child fallback for newly scaffolded projects in broad roots such as `/tmp`. Pre-existing paths that were overwritten are not promoted. Recursive cleanup additionally requires every current descendant to match the Session registry.
-5. Reviewable semantic risk is sent to an independent classifier. It receives the tool name, redacted bounded arguments, workspace root, deterministic reason, high-confidence literal filesystem effects with their pre-execution `existedBefore` state, at most four recent direct-human messages, and—when present—the exact sandbox request. Repository text, tool output, Assistant/Skill/plugin/subagent text, and the model-written justification are not user authority.
-6. A classifier `allow` runs the ordinary sandboxed call. A classifier `deny` returns a tool denial so the Agent can choose a safer plan without prompting. `ask` reaches the official approval path only for genuine ambiguity. Classifier unavailability, timeout, malformed output, or a missing model route denies the risky action for the first two consecutive failures so the Agent can retry or replan; the third consecutive failure for that Auto Session falls back to one ordinary manual approval instead of trapping the task in an endless deny loop. A successful classifier response resets the counter, and caller cancellation does not increment it.
-7. An explicit `sandbox_permissions: danger-full-access` retry is always classified, even when the underlying command would otherwise be routine. One exact new, narrow, reversible outside target may be authorized from clear direct task intent without forcing the user to repeat magic words. Overwriting or deleting pre-existing data requires exact direct-user authority for that effect and target. If allowed, the plugin records an exact pending grant and lets the official tool request approval. The approval listener returns `allowed-once` only when live Agent identity, tool name, call id, target mode, and justification all match; the record is consumed once or removed when the tool settles. A classifier `ask` falls through to that one official escalation prompt rather than producing two dialogs.
-
-The classifier may recognize direct-user authorization but cannot invent, generalize, or persist it. A one-shot grant does not modify the Session preset or sandbox mode.
-
-While Auto is active, a dynamic system context tells the Agent to perform ordinary work inside the sandbox, request an exact one-shot widening only when the task requires it, split unrelated effects, and treat deletion as the highest-risk operation. It prefers a reversible move, backup, or version-control-backed removal unless permanent deletion is explicit. This guidance helps planning but is not a security boundary; the deterministic policy and official sandbox remain authoritative.
-
-## Shell policy
-
-The shell decomposition remains deliberately small. It exists to find high-confidence effects—not to enumerate legal Bash or PowerShell. It recognizes protected deletion/redirection targets, exact Session-created artifacts, dangerous remote Git actions, mutation-bearing network flags, ephemeral downloaded-package execution, infrastructure tools, sensitive path/environment reads, and opaque interpreter input. Anything else—including routine dependency installation and local Git commits—proceeds inside `workspace-write`.
-
-This split is intentional:
-
-- OS containment answers “where may this process write?” without understanding shell syntax.
-- deterministic rules answer a few invariants and high-confidence effects;
-- the classifier answers “did the user authorize this concrete semantic effect?”;
-- the user sees a prompt only when the exact reviewer or escalation path genuinely cannot decide.
-
-The sandbox is not transactional. A command that writes inside the workspace and later hits a denied external write may leave its earlier workspace changes in place.
-
-## Delegated agents
-
-Official in-process children resolve Auto through their live `origin: subagent` / `parentSession` chain and keep the delegated workspace sandbox. Their individual tool calls are still evaluated independently using direct-human messages from the Auto authority Session.
-
-Children use `approval: never`. The plugin therefore refuses a child's `danger-full-access` request before classification and instructs it to report the blocked action to its parent. A child cannot convert inherited Auto into wider authority. Missing parents, cycles, non-subagent forks, and non-Auto ancestors do not acquire Auto.
-
-Out-of-process providers such as Codex, ACP, or dsh-sdk run their own internal tool loops and remain governed by their provider-owned sandbox and approval controls.
-
-## Threat model and invariants
-
-Protected assets include filesystem roots, Home, DSH_HOME, operating-system paths, repository security metadata, credentials, existing workspace data, Git/database/service state, cloud resources, and the sandbox/approval mechanisms themselves.
-
-The design assumes an Agent can misunderstand the task, repository or web content can contain prompt injection, shell syntax can be ambiguous, and the classifier can fail or be compromised. Its main invariants are:
-
-- normal Auto execution stays in the official `workspace-write` mode;
-- a static parser miss cannot grant filesystem writes outside that workspace;
-- hard denies remain monotonic;
-- hidden destruction cannot be classifier-approved;
-- a deletion request cannot generalize from one target to a sibling, parent, glob expansion, or second literal target;
-- replacing a Session-created path changes its file identity and revokes automatic-cleanup eligibility;
-- only direct-human Session text or the official exact approval response is authorization;
-- automatic widening is call-bound, identity-bound, reason-bound, and single-use;
-- subagents cannot widen themselves;
-- transient classifier failure denies only the risky action while routine sandboxed work remains available, with one manual-review fallback after three consecutive failures;
-- Windows `partial` enforcement is surfaced rather than treated as a full guarantee.
-
-Full access intentionally selects `danger-full-access` plus `never`; it is therefore outside the safety claim. No classifier can eliminate the risk of a process that already has unrestricted standing authority. The safer product path is Auto's standing `workspace-write` boundary plus exact, short-lived widening.
-
-## Coverage boundary
-
-The policy covers calls dispatched through the Harness tool registry. Shell subprocesses use the official OS sandbox, while official filesystem mutations use the upstream trusted in-process path fence. Reads, network access, external services, and other plugin capabilities are protected only by the semantic checks that recognize them.
-
-The plugin cannot mediate package lifecycle code that runs before it loads, direct Node filesystem/process work performed by another Host plugin outside `ctx.tools`, a compromised Harness runtime, commands launched outside Harness, or external-provider internal tool loops. Installed Host plugins already execute trusted process code and remain part of the trusted computing base.
-
-## Verification
-
-The suite contains pure policy tests for Bash and PowerShell, classifier and redaction tests, exact-grant replay/isolation tests, Cordis Loader composition tests, delegated-agent tests, and platform-gated real sandbox business flows. The macOS suite executes real processes through Seatbelt and the official filesystem fence, including unfamiliar shell work, an editor-created config followed by forced cleanup without classifier traffic, a multi-package Node build and `node:test`, a real Git repository and commit, a real pnpm install using a workspace-local store plus a packed dependency whose lifecycle script writes inside the project, a real local HTTP POST, workspace and outside exports, pre-existing overwrite distinction, partial command effects, symlink escape, same-Session cleanup, exact inside/outside deletion, broad Git cleanup, and allowed/denied one-shot escalation. It asserts process results plus resulting files, Git history, HTTP payloads, classifier calls, and approval events. A deterministic reviewer double is used in these integration tests so policy outcomes are repeatable; it is not presented as a live-model quality benchmark.
-
-A native-Windows suite composes the official ACL runner, sandboxed PowerShell executor, approval service, and Auto plugin to assert assignment/pipeline, outside-write, task-intent widening, exact-widening, and existing-data scenarios. It is compiled on every platform and runs only where native Windows `pwsh` is present; a non-Windows run must not be reported as Windows runtime verification. The `Verify` workflow runs `pnpm verify` on Ubuntu, macOS, and Windows for every pull request and main-branch push so both platform-gated suites become merge gates on their native runners.
+Official guidance distinguishes approval from enforced isolation: [OpenAI Windows sandbox](https://learn.chatgpt.com/docs/windows/windows-sandbox), [OpenAI agent approvals/security](https://learn.chatgpt.com/docs/agent-approvals-security), [Claude sandboxing](https://code.claude.com/docs/en/sandboxing), [Claude permissions](https://code.claude.com/docs/en/permissions). The examined Harness Windows ACL backend documents ambient Everyone-write/hard-link gaps and no read/network confinement. Consequently the plugin does not treat workspace-write alone as a proof that arbitrary code preserves user data.

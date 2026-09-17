@@ -4,9 +4,9 @@ export const AUTO_MODE_LOCALE_NAMESPACE = 'dsh-auto-mode.permission'
 /** Simplified Chinese copy for every plugin-owned permission surface. */
 export const zh = {
   'preset.label': '自动审批',
-  'preset.description': '在工作区沙箱内执行；自动审查风险，并可为必要的越界访问提供一次性审批。',
+  'preset.description': '保护优先：每次模型审查风险与授权，文件编辑仍需逐次人工确认，未隔离的代码执行被阻止。',
   'dialog.title': '确认启用自动审批？',
-  'dialog.description': '自动审批在日常操作中继续使用 DSH 的“可写入工作区”操作系统级文件沙箱；仅当任务明确需要范围小且可恢复的越界操作时，才会自动批准一次精确的权限提升。删除或覆盖已有数据仍需用户直接且明确授权，且授权不会延伸到其他目标。文件沙箱不限制读取、网络访问或外部服务；Windows 上仅提供部分约束，DSH 工具链之外的代码也不受本策略约束。',
+  'dialog.description': 'Auto 每次调用当前模型审查风险与授权，模型不能越过硬规则或替代人工审批。Shell、脚本、安装、构建、删除、未知工具和权限提升均被阻止；工作区内的结构化文件修改需要每次人工确认。链接、路径别名和敏感配置受到额外限制。该插件只约束启用 Auto 时经过 Harness 工具链的调用，不能替代独立操作系统隔离，也不能防御被篡改的宿主或插件。切换其他模式后这些限制不再适用。',
   'dialog.acknowledge': '我已了解风险，并愿意继续',
   'dialog.cancel': '取消',
   'dialog.confirm': '启用自动审批',
@@ -19,9 +19,9 @@ export type AutoModeLocaleKey = keyof typeof zh
 /** English copy, checked against the Chinese source key set. */
 export const en = {
   'preset.label': 'Auto',
-  'preset.description': 'Workspace-sandboxed execution with automatic review and one-shot approval for wider access.',
+  'preset.description': 'Preservation first: fresh model review on every admissible call, exact manual file edits, and no unisolated code execution.',
   'dialog.title': 'Enable Auto?',
-  'dialog.description': 'Auto keeps DSH\u2019s workspace-write operating-system file sandbox for ordinary work and can approve one exact wider request when a narrow, reversible step is clearly required by your task. Deleting or overwriting pre-existing data still requires exact direct-user authority and never extends to another target. The file sandbox does not restrict reads, network access, or external services; Windows enforcement is partial, and code outside the DSH tool pipeline remains outside this policy.',
+  'dialog.description': 'Auto reviews each admissible call with the current model. Model output cannot override hard rules or exact manual approval. Shells, scripts, installs, builds, deletion, unknown tools and privilege widening are blocked. Each structured workspace file edit requires exact manual approval. Links, ambiguous paths and sensitive configuration are restricted. This policy covers only Harness tool calls while Auto is active; it cannot replace independent OS isolation or defend against a compromised host or plugin. Other permission modes are outside this protection.',
   'dialog.acknowledge': 'I understand the risks and want to continue',
   'dialog.cancel': 'Cancel',
   'dialog.confirm': 'Enable Auto',

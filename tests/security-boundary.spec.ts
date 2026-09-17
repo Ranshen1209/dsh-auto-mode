@@ -54,7 +54,7 @@ async function createHarness() {
     })
     await context.plugin(SystemPrompt).await()
     await context.plugin(ToolRuntime).await()
-    await context.plugin(AutoMode, { workspaceRoot: workspace, dshHome, classifierTimeoutMs: 1_000 }).await()
+    await context.plugin(AutoMode, { modelReview: false, workspaceRoot: workspace, dshHome, classifierTimeoutMs: 1_000 }).await()
     context.on('tools/pre-execute', async (_exec, next) => {
       const decision = await next()
       decisions.push(decision)
@@ -125,7 +125,7 @@ describe('classifier and unaudited patch security boundaries', () => {
       ...(widening ? { sandbox_permissions: 'danger-full-access', justification: 'test that widening cannot bypass manual-only policy' } : {}),
     })
     expect(result).toMatchObject({ isError: true })
-    expect(harness.decisions.at(-1)).toMatchObject({ kind: 'ask', reason: expect.stringContaining('no verified Harness filesystem sandbox') })
+    expect(harness.decisions.at(-1)).toMatchObject({ kind: 'deny' })
     expect(harness.classifierInputs).toEqual([])
     expect(harness.executions).toEqual([])
     expect(await readFile(harness.canary, 'utf8')).toBe(ORIGINAL_CANARY)
@@ -147,7 +147,7 @@ describe('classifier and unaudited patch security boundaries', () => {
   it.each([['redacted', SYNTHETIC_TOKEN], ['truncated', 'x'.repeat(1_100)]])('keeps %s effect paths local', async (_kind, suffix) => {
     const result = await harness.run('write', { path: `.git/${suffix}` })
     expect(result).toMatchObject({ isError: true })
-    expect(harness.decisions.at(-1)).toMatchObject({ kind: 'ask', reason: expect.stringContaining('cannot be safely disclosed') })
+    expect(harness.decisions.at(-1)).toMatchObject({ kind: 'deny' })
     expect(harness.classifierInputs).toEqual([])
     expect(harness.executions).toEqual([])
   })
@@ -155,15 +155,14 @@ describe('classifier and unaudited patch security boundaries', () => {
   it.each([['redacted', SYNTHETIC_TOKEN], ['truncated', 'x'.repeat(1_100)]])('keeps %s workspace metadata local', async (_kind, suffix) => {
     const result = await harness.run('read', { path: join(harness.base, 'home', '.aws', 'fixture') }, `${harness.workspace}/${suffix}`)
     expect(result).toMatchObject({ isError: true })
-    expect(harness.decisions.at(-1)).toMatchObject({ kind: 'ask', reason: expect.stringContaining('cannot be safely disclosed') })
+    expect(harness.decisions.at(-1)).toMatchObject({ kind: 'deny' })
     expect(harness.classifierInputs).toEqual([])
     expect(harness.executions).toEqual([])
   })
 
-  it('redacts policy reasons as well as arguments before classification', async () => {
+  it('never sends policy reasons or arguments to a classifier', async () => {
     await harness.run('read', { path: join(harness.base, 'home', '.aws', SYNTHETIC_TOKEN) })
-    expect(harness.classifierInputs).toHaveLength(1)
-    expect(harness.classifierInputs[0]?.policyReason).toContain('[redacted-secret]')
+    expect(harness.classifierInputs).toHaveLength(0)
     expect(JSON.stringify(harness.classifierInputs)).not.toContain(SYNTHETIC_TOKEN)
   })
 })

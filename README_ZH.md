@@ -1,149 +1,48 @@
-<p align="right">
-  <a href="./README.md">English</a> · <strong>简体中文</strong>
-</p>
+# dsh-auto-mode：保护优先
 
-<p align="center">
-  <img src="./assets/readme/hero.svg" width="100%" alt="dsh-auto-mode 让 DeepSeek Harness 的日常工作自动流转，并拦住真正危险的操作">
-</p>
+这是 [Ranshen1209 的维护 Fork](https://github.com/Ranshen1209/dsh-auto-mode)，基于 [NanmiCoder/dsh-auto-mode](https://github.com/NanmiCoder/dsh-auto-mode) 0.1.9。候选版本 **0.3.0-alpha.1** 改变了原来的自动审批行为；上游 npm 0.1.9 不包含这些修复。
 
-<p align="center">
-  <a href="https://www.npmjs.com/package/@nanmicoder/dsh-auto-mode"><img src="https://img.shields.io/npm/v/@nanmicoder/dsh-auto-mode.svg" alt="npm 版本"></a>
-  <a href="./LICENSE"><img src="https://img.shields.io/npm/l/@nanmicoder/dsh-auto-mode.svg" alt="MIT 许可证"></a>
-  <img src="https://img.shields.io/badge/DeepSeek%20Harness-0.1.5--rc.1-202724" alt="精确宿主兼容矩阵见安装说明">
-</p>
+本版结合官方 Auto review 的指令来源区分与本 Fork 的确定性文件保护。每个符合基础安全规则的调用都使用当前任务的同一 provider/model 重新审查；模型可以否决操作，但不能授予 Full access 或越过人工审批。硬规则已禁止的操作直接拒绝，不额外调用模型。每次普通工具调用增加一次模型请求及相应耗时、费用。
 
-## 为什么需要 Auto？
+## 当前行为
 
-Coding Agent 需要足够大的权限才能持续构建、测试和检查项目，但 DeepSeek Harness 当前的选择很尖锐：受限模式会频繁打断正常开发，Full access 又完全取消审批。
-
-`dsh-auto-mode` 补上了中间层。日常项目操作直接在官方 `workspace-write` 沙箱内执行；沙箱覆盖不了的语义风险才结合当前 DSH 模型与用户原话分类；真正不明确的动作只询问一次；破坏关键路径的操作则在执行前直接拒绝。
-
-> [!IMPORTANT]
-> 插件 `0.1.9` 支持下表中的精确 Harness 版本。推荐 `0.1.5-rc.1`（当前 npm `latest`），宿主仍为预发布版本。此前插件只声明到 `0.1.2-rc.1`，因此在 `0.1.5-rc.1` 上安装会直接失败。升级插件不会升级正在运行的宿主，混装 DSH 依赖也不属于受支持配置。
-
-| Harness 宿主 | 插件 | 配对 |
-| --- | --- | --- |
-| `0.1.5-rc.1` | `0.1.9` | 推荐 |
-| `0.1.2-rc.1` | `0.1.9` | 保留兼容 |
-| `0.1.2-alpha.5` | `0.1.9` | 保留兼容 |
-| `0.1.2-alpha.3` | `0.1.9` | 保留兼容 |
-| `0.1.2-alpha.2` | `0.1.9` | 保留兼容 |
-| `0.1.1-rc.2` | 历史版本 `0.1.5` | `0.1.6` 及之后不再支持；旧版冗余沙箱参数问题请迁移上述配对 |
-| 其他版本 | 未声明 | 需先通过完整宿主验证 |
-
-精确版本由 [compatibility.json](./compatibility.json) 管理。此前的诊断与修复见 [维护记录](./docs/maintenance-2026-09-06/README.md)，本次升级见 [0.1.5-rc.1 升级记录](./docs/harness-0.1.5-rc.1-upgrade-2026-09-14/README.md)。更早的验证见 [Alpha 验收报告](./docs/alpha2-acceptance.md)。
-
-### npm
-
-先确认实际启动的 `dsh --version`，然后安装插件：
-
-```sh
-dsh plugin --profile web add @nanmicoder/dsh-auto-mode
-```
-
-该命令解析 npm `latest`，即始终是最新的插件版本；不需要锁定版本号，因为兼容性由**宿主**版本决定，宿主不在上表范围内时插件会在首个用户轮次前明确拒绝运行。`next` 发布预发布插件版本；标签不代表任意宿主兼容。Git 源码安装会通过 `prepare` 自动构建，需要开发依赖和启用安装脚本；普通 npm 包已包含编译产物。
-
-### 从源码构建
-
-```sh
-git clone https://github.com/NanmiCoder/dsh-auto-mode.git
-cd dsh-auto-mode
-pnpm install
-pnpm build
-dsh plugin --profile web add .
-```
-
-修改源码后请重新执行 `pnpm build`。本地安装会继续链接到当前源码目录。
-
-检查组合配置并启动：
-
-```sh
-dsh --profile web --dump-config
-dsh web
-```
-
-刷新 Web UI，在“可写入工作区”与“完全权限”之间选择 **自动审批**，并确认风险提示。如果实际运行的是其他 Profile，请把 `web` 替换为对应名称。
-
-插件客户端使用 DSH 官方的多语言服务：中文界面显示 **自动审批**，英文界面保留 **Auto**。切换 DSH 语言后，权限菜单、当前模式按钮、“通用设置”中的默认权限、`/permission` 选项说明和风险确认弹窗都会立即更新，无需重启。
-
-## 权限模式
-
-| 模式 | 文件沙箱 | 审批 | Auto 策略 |
-| --- | --- | --- | --- |
-| Read Only | `read-only` | ask | 不启用 |
-| Workspace Write | `workspace-write` | ask | 不启用 |
-| **自动审批（Auto）** | `workspace-write` | ask | **启用** |
-| Full access | `danger-full-access` | never | 不启用 |
-
-Auto 的普通操作保留在 Workspace Write 边界内，只有明确的一次性越权请求才可能被自动批准：
-
-| 决策 | 典型效果 |
+| 操作 | Auto 的决策 |
 | --- | --- |
-| **自动放行** | 沙箱内的陌生 Bash/PowerShell、常规依赖安装、本地 Git commit、项目读写、构建、测试、类型检查和已审计的 DSH 协作工具 |
-| **后台分类** | Session 前已有数据删除、临时下载包执行、危险的远程 Git/数据库/服务变更、敏感读取、网络传输、外部系统写入和精确 sandbox 越权 |
-| **询问一次** | 效果或授权确实不明确，或分类器连续失败三次后转人工确认；越权时复用官方那一次精确审批，不产生双弹窗 |
-| **直接拒绝** | 根目录、Home、DSH_HOME、系统破坏、权限绕过、凭据外传、隐藏动态删除，以及风险操作前两次连续分类器故障 |
+| 可验证的工作区普通文件读取 | 每次模型审查风险和授权，通过后执行 |
+| 工作区敏感文件读取 | 每次通过官方审批入口确认 |
+| 单文件结构化创建、写入、编辑 | 每次人工确认，绑定完整参数、目标身份、内容和后端文件版本 |
+| Shell、PowerShell、CMD、Python、Node、安装、构建、测试脚本 | 阻止；当前没有经过验证的独立隔离执行器 |
+| 删除、清理、Git reset/clean、镜像同步、任意补丁工具 | 阻止；“本次生成”或“用户说过可以”均不自动放行 |
+| 外部代理、工作流、交互终端、未知插件/MCP 工具 | 阻止 |
+| sandbox 权限提升 | 阻止，模型没有授权权力 |
+| 已审计的会话状态和终止自有后台任务工具 | 每次模型审查通过后允许；通用工具分发和任意信号发送不在白名单 |
 
-分类器本身不是授权来源。它只接收经过脱敏和长度限制的待执行调用描述，并且只能识别直接用户 Session 消息中的授权。仓库文本、工具输出、Assistant、Skill、插件和子 Agent 都不能授予权限。
+目录联接、符号链接、硬链接、多义 Windows 路径、设备名、ADS、工作区外目标、工作区根目录及敏感配置修改受到拒绝。每级祖先无法检查时拒绝。单文件精确检查限 16 MiB；新文件的父目录必须已经存在。递归搜索暂时关闭，避免链接或凭证范围无法逐项确认。
 
-## Shell、Sandbox 与删除行为
+**人工批准文件编辑可能覆盖或清空文件；必须审阅实际目标和完整内容。** 审批拒绝、取消、缺失、异常、超时，或者审批期间权限、参数、目标、文件内容变化，均不会放行该操作。模型审查还绑定完整调用、工具 schema、模型路由、可见授权历史、权限历史及文件身份，最长有效 120 秒；审查报错、超时或不合规输出均拒绝。工具输出、模型自述和项目文件不被当作用户授权。旧分类器路由配置不再参与运行时；旧自动提权和产物清理授权 API 是不授予权限的兼容空实现。
 
-Auto 不再试图用白名单证明每一种 Bash/PowerShell 语法安全。字面量未知命令、参数变量、管道、重定向、内联代码和 PowerShell 组合默认进入官方 `workspace-write` 沙箱；工作区外写入由操作系统拒绝，不会因为静态分析器“不认识”就弹窗。只有连可执行文件名都被变量或 glob 隐藏时才会后台拒绝，要求 Agent 改写成可见命令。
+## 安全保证的边界
 
-Sandbox 只限制“写到哪里”，不会阻止删除工作区内已有数据，也不限制读取和网络。因此删除采用比普通写入更窄的规则：
+插件不能提供“绝对不会删盘”的保证。它只在后端已成功加载、Auto 启用、可信且已验收的 Harness 工具/文件系统组合内提供这些限制。宿主或插件被篡改、同名工具被替换、其他审批插件自动答复、绕过工具链直接执行代码、启动前安装脚本、切换权限模式，以及停用/HMR 卸载本插件，都不属于其保证。不要把 UI 上的 Auto 标签当成后端保护正常工作的证明。
 
-| 删除类型 | Auto 行为 |
-| --- | --- |
-| 当前 Session 创建、且文件身份未变化的单个精确产物 | 自动清理 |
-| 单个已有文件或目录 | 仅在直接用户消息精确要求删除该目标后分类 |
-| 工作区外单个已有目标 | 精确授权后，只给该次调用一次越权 |
-| 多目标、glob、变量、管道输入、嵌套解释器删除 | 后台拒绝，要求 Agent 拆成每次一个可见字面目标 |
-| 根目录、Home、DSH_HOME、系统/凭据关键路径 | 无条件拒绝 |
+文件版本条件和重复调用拦截可阻止已测试的审批重放与并发变化，但不构成内核级原子路径能力；外部进程在最终检查与系统调用之间改写同一文件内容或替换目录，仍可能使新内容被覆盖，这是宿主文件系统必须解决的边界。Windows ACL sandbox 也不能等同于完整读写和网络隔离。需要运行任意代码时，应另建无敏感挂载、无宿主凭证、无共享可写磁盘的可丢弃虚拟机/容器，并经独立验收；本候选版没有实现或默认启用这类执行器。
 
-Session 产物包括 Shell 重定向、任意成功的 Shell 工具与项目脚手架、文件系统工具和官方字符串编辑器创建的文件。对于 Shell 工具，Auto 会在调用前后比较一次有上限的 workspace 快照；workspace 过大时只保留安全的直属子目录回退，因此可识别新生成的完整项目，但不会把已有项目中的文件误算成新文件。产物按设备号、inode、出生时间和类型记录；递归清理还要求目录树中的每个当前对象都能匹配 Session 记录。路径被重命名、替换、换成符号链接，或新目录中混入旧文件后，不再享有自动清理资格。用户未明确要求永久删除时，Agent 指引会优先建议移动、备份或版本控制删除。
+## 使用与验证
 
-常规 npm、pnpm、yarn、bun、pip 和本地 Cargo 安装与构建、测试一样，直接在 workspace sandbox 内运行，不经过分类器；文件写入仍受 sandbox 限制。`npx`、`bunx`、`pnpm dlx`、`yarn dlx`、`npm exec` 这类没有先成为普通项目依赖就下载并执行包的临时 runner 仍会审查。敏感读取、网络传输和外部系统副作用也仍会审查。
-
-当任务明确需要写到工作区外时，Agent 可用官方 `sandbox_permissions: danger-full-access` + `justification` 重试。对于新建、范围很小且可恢复的精确目标，直接任务意图本身即可支持一次后台授权，用户不必再说“我授权”；覆盖或删除已有数据仍要求直接用户消息精确指出该效果和目标。Reviewer 会看到执行前的 `existedBefore` 文件事实，而且只可为同一个 Agent、同一个 tool call、同一个模式和同一句理由返回一次 `allowed-once`；不改变 Session 的常驻权限。
-
-Full access 是用户明确选择的无沙箱、免审批模式，插件不能把它变安全。Auto 的设计目标不是“在完全权限下猜哪些命令安全”，而是让绝大多数任务保留常驻沙箱，仅在业务确实需要时借出一次最小权限。
-
-
-普通工具调用应省略 `sandbox_permissions` 和 `justification`。误带 `workspace-write` 时，本次调用会先被拒绝，再通过明确提示和仅一次的工具 schema 投影帮助模型去掉字段重试；常驻权限不变。第三方 `apply_patch` 的执行器没有经过官方沙箱契约验证，始终保留人工审批，关键路径修改仍直接拒绝。PowerShell 字面量赋值可正常运行；命令型 RHS 与原命令采用相同评估。
-
-## Sub-agent、Workflow 与 Goal
-
-官方进程内 Subagent、Workflow `agent()`、Ralph `spawn` worker 和 AgentTeams 成员都通过活动 `parentSession` 链继承 Auto 与 workspace 边界，但它们的每次文件和 Shell 调用仍会单独检查。Goal 在当前 Agent 上续跑，因此权限不变。
-
-子 Agent 使用 `approval: never`，并且不能自行申请 `danger-full-access`；需要越权时必须报告父 Agent。Codex、ACP、dsh-sdk 等进程外 Provider 的内部工具由各自权限策略负责，不在本插件的工具注册表边界内。
-
-## 配置
-
-默认不需要额外 Endpoint 或 API Key；Auto 使用当前 Session 的 DSH Provider 和模型。受信任的 Profile 也可以固定专用路由：
-
-```yaml
-- id: auto-permission-mode
-  config:
-    classifierProvider: deepseek-official
-    classifierModel: deepseek-v4-flash
-    classifierTimeoutMs: 30000
-    classifierMaxOutputTokens: 1024
-```
-
-完整决策顺序、威胁模型、Windows 路径处理、分类器载荷限制和官方源码依据见 [DESIGN.md](./DESIGN.md)。
-
-## 安全边界
-
-插件无法拦截加载前执行的包生命周期脚本、绕开 `ctx.tools` 的 Node 文件系统/进程调用、被攻破的 Harness Runtime 或在 Harness 外部启动的命令。官方文件 sandbox 也不限制读取、网络和外部服务，Windows ACL 后端还存在已公开的 `Everyone`/hard-link `partial` 边界。本地化的“自动审批”文案、图标与风险确认弹窗只是针对已测试 DSH Web UI 的兼容增强，不是安全边界。
-
-## 开发
+独立插件面向一致的 **Harness 0.1.5-rc.1** 依赖组合；桌面集成目标为 **0.1.6-alpha.1.desktop.1**，验收状态单独见 VALIDATION；旧版、混合安装以及 `desktop.5` 不自动声明兼容。先在独立 Profile 验证本 Fork 打出的 `.tgz`，不要用上游 npm `latest` 代替它。未发布到 npm。桌面构建内置私有源码副本，默认开启 `enforceAllSessions: true` 与 `modelReview: true`，旧会话的权限选择仍受保护。宿主在插件缺失、卸载或替换时拒绝工具执行。
 
 ```sh
-pnpm install
-pnpm verify
-git diff --check
+pnpm install --frozen-lockfile --ignore-scripts
+pnpm run typecheck
+pnpm run build
+pnpm test
+node scripts/verify-package.mjs
 ```
 
-## 许可证
+Windows 的真实祖先路径检查需要运行账户具有读取目录身份的权限；权限不足会失败关闭，不能跳过检查以得到通过结果。测试只操作自行创建的临时哨兵文件，危险命令语料不直接执行。
 
-[MIT](./LICENSE)
+[设计与公开事件来源](DESIGN.md) · [验收范围](VALIDATION.md) · [变更记录](RELEASE_NOTES.md) · [English](README.md)
+
+原作者与贡献归属保留，许可证为 [MIT](LICENSE)。
+
+官方审查引擎取自 DeepSeek Harness `dsh-v0.1.6-alpha.1`（`0a15e36e7f82b6ed45af6fa9759f29b40dcd965d`），保留 [MIT 许可](src/upstream-review/LICENSE)，未引入官方的 Full access 放行和卸载迁移行为。

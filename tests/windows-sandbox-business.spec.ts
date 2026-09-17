@@ -47,7 +47,7 @@ afterEach(async () => {
 
 async function createWindowsHarness(userMessage: string | ((outside: string) => string)): Promise<WindowsHarness> {
   const { default: LocalSubprocessRuntime } = await import('@deepseek-ai/dsh-subprocess-local')
-  const workspace = await mkdtemp(join(homedir(), 'dsh-auto-windows-workspace-'))
+  const workspace = await mkdtemp(join(tmpdir(), 'dsh-auto-windows-workspace-'))
   const outside = await mkdtemp(join(tmpdir(), 'dsh-auto-windows-outside-'))
   tempDirs.push(workspace, outside)
   const classifierCalls: ClassifierInput[] = []
@@ -105,7 +105,7 @@ async function createWindowsHarness(userMessage: string | ((outside: string) => 
   await context.plugin(SandboxPwshExecutor, { cwd: workspace, timeoutMs: 30_000 })
   await context.plugin(ShellEnv)
   await context.plugin(ToolPwsh, { enableRunInBackground: false })
-  await context.plugin(AutoMode, { workspaceRoot: workspace, dshHome: join(workspace, '.dsh') })
+  await context.plugin(AutoMode, { modelReview: false, workspaceRoot: workspace, dshHome: join(workspace, '.dsh') })
 
   const sessionId = 'windows-business-session'
   const agent = {
@@ -151,70 +151,22 @@ async function createWindowsHarness(userMessage: string | ((outside: string) => 
   }
 }
 
-describe.skipIf(!nativeWindowsPwsh)('Auto business flows through the real Windows ACL sandbox', () => {
-  it('runs ordinary assignment and pipeline syntax inside the workspace without classification', async () => {
-    const harness = await createWindowsHarness('Build and verify this Windows workspace.')
-    const target = join(harness.workspace, 'business.txt')
-    const result = await harness.run('windows-routine', [
-      "$values = @(1, 2, 3)",
-      `$values | ForEach-Object { $_ * 2 } | Set-Content -LiteralPath ${pwshQuote(target)}`,
-    ].join('; '))
 
-    expect(result.isError, result.isError ? result.error.message : '').toBe(false)
-    expect(await readFile(target, 'utf8')).toMatch(/2\r?\n4\r?\n6/)
-    expect(harness.classifierCalls).toEqual([])
-  }, 60_000)
-
-  it('lets the native ACL runner deny an outside write without classification', async () => {
-    const harness = await createWindowsHarness('Keep all work inside this Windows workspace.')
-    const target = join(harness.outside, 'blocked.txt')
-    await harness.run('windows-outside-denied', `Set-Content -LiteralPath ${pwshQuote(target)} -Value blocked`)
-
-    expect(existsSync(target)).toBe(false)
-    expect(harness.classifierCalls).toEqual([])
-  }, 60_000)
-
-  it('uses one exact allowed-once approval for an authorized wider retry', async () => {
-    const harness = await createWindowsHarness(outside => `我明确授权写入这个 Windows 测试文件夹：${outside}`)
-    const target = join(harness.outside, 'approved.txt')
-    const result = await harness.run(
-      'windows-outside-approved',
-      `Set-Content -LiteralPath ${pwshQuote(target)} -Value approved -NoNewline`,
-      { escalate: true },
-    )
-
-    expect(result.isError, result.isError ? result.error.message : '').toBe(false)
-    expect(await readFile(target, 'utf8')).toBe('approved')
-    expect(harness.classifierCalls).toHaveLength(1)
-    expect(harness.events.filter(event => event.type === 'approval/asked')).toHaveLength(1)
-    expect(harness.events.find(event => event.type === 'approval/decided')?.data).toMatchObject({ outcome: 'allowed-once' })
-  }, 60_000)
-
-  it('auto-authorizes one new outside export from direct task intent', async () => {
-    const harness = await createWindowsHarness(outside => `把生成的报告导出到 ${join(outside, 'new-report.txt')}。`)
-    const target = join(harness.outside, 'new-report.txt')
-    const result = await harness.run(
-      'windows-implicit-export',
-      `Set-Content -LiteralPath ${pwshQuote(target)} -Value ready -NoNewline`,
-      { escalate: true },
-    )
-
-    expect(result.isError, result.isError ? result.error.message : '').toBe(false)
-    expect(await readFile(target, 'utf8')).toBe('ready')
-    expect(harness.classifierCalls[0]?.filesystemEffects).toEqual([
-      { kind: 'create-or-overwrite', path: target.toLowerCase(), existedBefore: false },
-    ])
-    expect(harness.events.find(event => event.type === 'approval/decided')?.data).toMatchObject({ outcome: 'allowed-once' })
-  }, 60_000)
-
-  it('blocks deletion of existing workspace data before PowerShell executes', async () => {
-    const harness = await createWindowsHarness('Inspect this project; do not delete existing data.')
+describe.skipIf(!nativeWindowsPwsh)('Windows real PowerShell tool under protection-first Auto', () => {
+  it.each([false, true])('blocks invocation even when escalation=%s and preserves the sentinel', async escalate => {
+    const harness = await createWindowsHarness('I authorize cleanup, builds, and any wider execution.')
     const target = join(harness.workspace, 'existing.txt')
     await writeFile(target, 'keep')
-    const result = await harness.run('windows-existing-delete', `Remove-Item -LiteralPath ${pwshQuote(target)} -Force`)
-
-    expect(result.isError).toBe(true)
-    expect(await readFile(target, 'utf8')).toBe('keep')
-    expect(harness.classifierCalls).toHaveLength(1)
+    for (const command of [
+      `Remove-Item -LiteralPath ${pwshQuote(target)} -Force`,
+      `Set-Content -LiteralPath ${pwshQuote(target)} -Value overwritten`,
+      '$x = 5; Write-Output $x', 'npm install', 'node ./cleanup.js',
+    ]) {
+      const result = await harness.run('windows-denied', command, { escalate })
+      expect(result.isError, JSON.stringify(result)).toBe(true)
+      expect(await readFile(target, 'utf8')).toBe('keep')
+    }
+    expect(harness.classifierCalls).toEqual([])
+    expect(harness.events.filter(event => event.type === 'approval/asked')).toEqual([])
   }, 60_000)
 })

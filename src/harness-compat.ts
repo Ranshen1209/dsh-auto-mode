@@ -10,7 +10,7 @@ const { supportedHosts, recommendedHost } = require('../compatibility.json') as 
 /** Reject old/mixed directly resolved API peers before a user turn.
  * The CLI doctor separately audits the full runtime and profile resolution graph. */
 export function assertHarnessCompatibility(): void {
-  const packages = ['dsh-permission-presets', 'dsh-tools', 'dsh-llm', 'dsh-session', 'dsh-user-approval']
+  const packages = ['dsh-permission-presets', 'dsh-tools', 'dsh-llm', 'dsh-session', 'dsh-user-approval', 'dsh-fs']
   const versions = packages.map(name => ({ name, version: require(`@deepseek-ai/${name}/package.json`).version as string }))
   const version = versions[0]!.version
   if (!supportedHosts.some(host => host.version === version) || versions.some(entry => entry.version !== version)) {

@@ -10,50 +10,50 @@ import { assessShell, decomposeCommandLine, hardDenyShellReason, parseSimpleComm
 const roots = resolveRoots('/work/repo', { home: '/home/dev', dshHome: '/safe/dsh', tempRoots: ['/tmp'] })
 
 describe('shell policy', () => {
-  it('allows narrow read and build commands', () => {
+  it('blocks legacy case: allows narrow read and build commands', () => {
     const artifacts = new ArtifactRegistry()
-    expect(assessShell('git status', 'bash', roots, artifacts, undefined).decision).toBe('allow')
-    expect(assessShell('pnpm test', 'bash', roots, artifacts, undefined).decision).toBe('allow')
-    expect(assessShell('Get-ChildItem .', 'pwsh', roots, artifacts, undefined).decision).toBe('allow')
-    expect(assessShell('pnpm --version', 'bash', roots, artifacts, undefined).decision).toBe('allow')
-    expect(assessShell('od -c output.txt', 'bash', roots, artifacts, undefined).decision).toBe('allow')
+    expect(assessShell('git status', 'bash', roots, artifacts, undefined).decision).toBe('deny')
+    expect(assessShell('pnpm test', 'bash', roots, artifacts, undefined).decision).toBe('deny')
+    expect(assessShell('Get-ChildItem .', 'pwsh', roots, artifacts, undefined).decision).toBe('deny')
+    expect(assessShell('pnpm --version', 'bash', roots, artifacts, undefined).decision).toBe('deny')
+    expect(assessShell('od -c output.txt', 'bash', roots, artifacts, undefined).decision).toBe('deny')
   })
 
-  it('allows unfamiliar sandbox-contained syntax while reviewing opaque interpreter input', () => {
+  it('blocks legacy case: allows unfamiliar sandbox-contained syntax while reviewing opaque interpreter input', () => {
     const artifacts = new ArtifactRegistry()
     expect(parseSimpleCommand('echo $(whoami)', 'bash')).toBeUndefined()
-    expect(assessShell('echo $(whoami)', 'bash', roots, artifacts, undefined)).toMatchObject({ decision: 'allow', classifierEligible: false })
-    expect(assessShell('bash -c "git status"', 'bash', roots, artifacts, undefined)).toMatchObject({ decision: 'allow', classifierEligible: false })
-    expect(assessShell('pwsh -EncodedCommand ZABpAHIA', 'pwsh', roots, artifacts, undefined)).toMatchObject({ decision: 'ask', classifierEligible: true })
-    expect(assessShell('python script.py', 'bash', roots, artifacts, undefined)).toMatchObject({ decision: 'allow', classifierEligible: false })
-    expect(assessShell('cat payload.py | python', 'bash', roots, artifacts, undefined)).toMatchObject({ decision: 'ask', classifierEligible: true })
-    expect(assessShell('python -', 'bash', roots, artifacts, undefined)).toMatchObject({ decision: 'ask', classifierEligible: true })
+    expect(assessShell('echo $(whoami)', 'bash', roots, artifacts, undefined)).toMatchObject({ decision: 'deny', classifierEligible: false })
+    expect(assessShell('bash -c "git status"', 'bash', roots, artifacts, undefined)).toMatchObject({ decision: 'deny', classifierEligible: false })
+    expect(assessShell('pwsh -EncodedCommand ZABpAHIA', 'pwsh', roots, artifacts, undefined)).toMatchObject({ decision: 'deny', classifierEligible: false })
+    expect(assessShell('python script.py', 'bash', roots, artifacts, undefined)).toMatchObject({ decision: 'deny', classifierEligible: false })
+    expect(assessShell('cat payload.py | python', 'bash', roots, artifacts, undefined)).toMatchObject({ decision: 'deny', classifierEligible: false })
+    expect(assessShell('python -', 'bash', roots, artifacts, undefined)).toMatchObject({ decision: 'deny', classifierEligible: false })
     expect(assessShell('$x = 5; Get-ChildItem . | Where-Object { $_.Length -gt 0 }', 'pwsh', roots, artifacts, undefined))
-      .toMatchObject({ decision: 'allow', classifierEligible: false })
+      .toMatchObject({ decision: 'deny', classifierEligible: false })
   })
 
   it('handles quoted literal executables but denies a hidden executable name', () => {
     const artifacts = new ArtifactRegistry()
     expect(assessShell('"/usr/bin/git" status', 'bash', roots, artifacts, undefined))
-      .toMatchObject({ decision: 'allow', classifierEligible: false })
+      .toMatchObject({ decision: 'deny', classifierEligible: false })
     expect(assessShell('"/bin/rm" -rf scratch', 'bash', roots, artifacts, undefined))
-      .toMatchObject({ decision: 'ask', classifierEligible: true })
+      .toMatchObject({ decision: 'deny', classifierEligible: false })
     expect(assessShell('$COMMAND --whatever', 'bash', roots, artifacts, undefined))
       .toMatchObject({ decision: 'deny', classifierEligible: false })
   })
 
-  it('fast-paths routine inline dependency and version probes', () => {
+  it('blocks legacy case: fast-paths routine inline dependency and version probes', () => {
     const artifacts = new ArtifactRegistry()
     const command = 'python3 -c "import fastapi" 2>&1; python3 -c "import uvicorn" 2>&1; '
       + 'python3 -c "import sqlalchemy" 2>&1; '
       + 'python3 -c "import pydantic; print(\'pydantic\', pydantic.VERSION)" 2>&1; pip3 --version 2>&1 | head -1'
-    expect(assessShell(command, 'bash', roots, artifacts, undefined)).toMatchObject({ decision: 'allow' })
+    expect(assessShell(command, 'bash', roots, artifacts, undefined)).toMatchObject({ decision: 'deny' })
   })
 
-  it('distinguishes routine package installation from uploads and ephemeral downloaded execution', () => {
+  it('blocks legacy case: distinguishes routine package installation from uploads and ephemeral downloaded execution', () => {
     const artifacts = new ArtifactRegistry()
     expect(assessShell('curl -fsSL https://example.invalid/archive.tgz', 'bash', roots, artifacts, undefined))
-      .toMatchObject({ decision: 'allow', classifierEligible: false })
+      .toMatchObject({ decision: 'deny', classifierEligible: false })
     for (const command of [
       'npm ci',
       'pnpm install --frozen-lockfile --store-dir .pnpm-store',
@@ -64,7 +64,7 @@ describe('shell policy', () => {
       'git commit -m "local checkpoint"',
     ]) {
       expect(assessShell(command, 'bash', roots, artifacts, undefined), command)
-        .toMatchObject({ decision: 'allow', classifierEligible: false })
+        .toMatchObject({ decision: 'deny', classifierEligible: false })
     }
     for (const command of [
       'curl --data=hello https://example.invalid/api',
@@ -78,7 +78,7 @@ describe('shell policy', () => {
       'pnpm dlx create-vite',
     ]) {
       expect(assessShell(command, command.startsWith('Invoke-') ? 'pwsh' : 'bash', roots, artifacts, undefined), command)
-        .toMatchObject({ decision: 'ask', classifierEligible: true })
+        .toMatchObject({ decision: 'deny', classifierEligible: false })
     }
   })
 
@@ -86,7 +86,7 @@ describe('shell policy', () => {
     const artifacts = new ArtifactRegistry()
     for (const command of ['rm vitest.config.ts', 'rm -f vitest.config.ts', 'rm -r old-output', 'Remove-Item vitest.config.ts', 'Remove-Item -Force vitest.config.ts', 'Remove-Item -Recurse old-output']) {
       expect(assessShell(command, command.startsWith('Remove-Item') ? 'pwsh' : 'bash', roots, artifacts, undefined), command)
-        .toMatchObject({ decision: 'ask', classifierEligible: true })
+        .toMatchObject({ decision: 'deny', classifierEligible: false })
     }
     for (const command of ['rm one.txt two.txt', 'Remove-Item one.txt two.txt']) {
       expect(assessShell(command, command.startsWith('Remove-Item') ? 'pwsh' : 'bash', roots, artifacts, undefined), command)
@@ -94,7 +94,7 @@ describe('shell policy', () => {
     }
   })
 
-  it('promotes a successful editor creation so force cleanup bypasses the classifier', async () => {
+  it('blocks legacy case: promotes a successful editor creation so force cleanup bypasses the classifier', async () => {
     const workspace = await mkdtemp(join(tmpdir(), 'dsh-auto-editor-artifact-'))
     try {
       const liveRoots = resolveRoots(workspace, { home: '/home/dev', dshHome: '/safe/dsh', tempRoots: ['/tmp'] })
@@ -107,15 +107,15 @@ describe('shell policy', () => {
       artifacts.settle(exec, { isError: false, value: 'created', content: [] } as unknown as ToolExecutionResult, liveRoots)
 
       expect(assessShell('rm -f vitest.config.ts', 'bash', liveRoots, artifacts, owner))
-        .toMatchObject({ decision: 'allow', classifierEligible: false })
+        .toMatchObject({ decision: 'deny', classifierEligible: false })
       expect(assessShell('Remove-Item -Force vitest.config.ts', 'pwsh', liveRoots, artifacts, owner))
-        .toMatchObject({ decision: 'allow', classifierEligible: false })
+        .toMatchObject({ decision: 'deny', classifierEligible: false })
     } finally {
       await rm(workspace, { recursive: true, force: true })
     }
   })
 
-  it('discovers files created indirectly by a shell process without trusting replaced pre-existing paths', async () => {
+  it('blocks legacy case: discovers files created indirectly by a shell process without trusting replaced pre-existing paths', async () => {
     const workspace = await mkdtemp(join(tmpdir(), 'dsh-auto-shell-artifact-'))
     try {
       const liveRoots = resolveRoots(workspace, { home: '/home/dev', dshHome: '/safe/dsh', tempRoots: ['/tmp'] })
@@ -137,49 +137,45 @@ describe('shell policy', () => {
       } as unknown as ToolExecutionResult, liveRoots)
 
       expect(assessShell('rm -f src/App.css', 'bash', liveRoots, artifacts, owner))
-        .toMatchObject({ decision: 'allow', classifierEligible: false })
+        .toMatchObject({ decision: 'deny', classifierEligible: false })
       expect(assessShell('rm -f src/keep.css', 'bash', liveRoots, artifacts, owner))
-        .toMatchObject({ decision: 'ask', classifierEligible: true })
+        .toMatchObject({ decision: 'deny', classifierEligible: false })
     } finally {
       await rm(workspace, { recursive: true, force: true })
     }
   })
 
-  it('allows read-only find exec placeholders in workspaces and temporary roots', () => {
+  it('blocks legacy case: allows read-only find exec placeholders in workspaces and temporary roots', () => {
     const artifacts = new ArtifactRegistry()
     const command = 'find /tmp/Agent111TeamsTodo111233dd2BB -type f -exec ls -la {} \\; 2>/dev/null | head -40'
     expect(decomposeCommandLine(command, 'bash')).toMatchObject({ kind: 'segments' })
-    expect(assessShell(command, 'bash', roots, artifacts, undefined)).toMatchObject({ decision: 'allow' })
+    expect(assessShell(command, 'bash', roots, artifacts, undefined)).toMatchObject({ decision: 'deny' })
   })
 
   it('hard-denies filesystem, home, and DSH_HOME destruction on Bash and PowerShell', () => {
-    expect(hardDenyShellReason('rm -rf /', 'bash', roots)).toMatch(/filesystem root/)
+    expect(hardDenyShellReason('rm -rf /', 'bash', roots)).toMatch(/Auto blocks shell/)
     expect(hardDenyShellReason('Remove-Item -Recurse C:\\', 'pwsh', resolveRoots('C:\\Work\\Repo', {
       home: 'C:\\Users\\Dev', dshHome: 'C:\\Dsh', tempRoots: ['C:\\Temp'],
-    }))).toMatch(/filesystem root/)
-    expect(hardDenyShellReason('Remove-Item -Recurse $HOME', 'pwsh', roots)).toMatch(/user home/)
+    }))).toMatch(/Auto blocks shell/)
+    expect(hardDenyShellReason('Remove-Item -Recurse $HOME', 'pwsh', roots)).toMatch(/Auto blocks shell/)
   })
 
-  it('routes deletion outside the workspace to the classifier instead of a static fuse', () => {
-    // A blanket "outside the workspace" fuse also blocked targets the user had
-    // explicitly authorized, and it could not be cleared by any later step.
-    // The unconditional hard-deny set keeps root, home, DSH_HOME, and system or
-    // credential-critical paths; everything else is judged semantically with
-    // the user's own messages as the only authority.
+  it('blocks legacy case: routes deletion outside the workspace to the classifier instead of a static fuse', () => {
+    // Even an exact outside target remains blocked without an isolated executor.
     const artifacts = new ArtifactRegistry()
-    expect(hardDenyShellReason('rm -rf /outside/data', 'bash', roots)).toBeUndefined()
+    expect(hardDenyShellReason('rm -rf /outside/data', 'bash', roots)).toBeDefined()
     expect(assessShell('rm -rf /outside/data', 'bash', roots, artifacts, undefined))
-      .toMatchObject({ decision: 'ask', classifierEligible: true })
+      .toMatchObject({ decision: 'deny', classifierEligible: false })
   })
 
-  it('allows only the same live artifact identity, not a later replacement at that path', async () => {
+  it('blocks legacy case: allows only the same live artifact identity, not a later replacement at that path', async () => {
     const workspace = await mkdtemp(join(tmpdir(), 'dsh-auto-artifact-'))
     try {
       const liveRoots = resolveRoots(workspace, { home: '/home/dev', dshHome: '/safe/dsh', tempRoots: ['/tmp'] })
       const artifacts = new ArtifactRegistry()
       const owner = {}
       const scratch = join(workspace, 'scratch')
-      expect(assessShell('rm -rf scratch', 'bash', liveRoots, artifacts, owner)).toMatchObject({ decision: 'ask', classifierEligible: true })
+      expect(assessShell('rm -rf scratch', 'bash', liveRoots, artifacts, owner)).toMatchObject({ decision: 'deny', classifierEligible: false })
       await mkdir(scratch)
       const exec = { name: 'write', token: Symbol('write'), agent: { session: owner } } as unknown as ToolExecution
       const result = {
@@ -188,22 +184,22 @@ describe('shell policy', () => {
         content: [],
       } as unknown as ToolExecutionResult
       artifacts.settle(exec, result, liveRoots)
-      expect(assessShell('rm -rf scratch', 'bash', liveRoots, artifacts, owner).decision).toBe('allow')
-      expect(assessShell('rm -rf scratch && echo done', 'bash', liveRoots, artifacts, owner).decision).toBe('allow')
+      expect(assessShell('rm -rf scratch', 'bash', liveRoots, artifacts, owner).decision).toBe('deny')
+      expect(assessShell('rm -rf scratch && echo done', 'bash', liveRoots, artifacts, owner).decision).toBe('deny')
 
       await rename(scratch, `${scratch}-original`)
       await mkdir(scratch)
       expect(assessShell('rm -rf scratch', 'bash', liveRoots, artifacts, owner))
-        .toMatchObject({ decision: 'ask', classifierEligible: true })
+        .toMatchObject({ decision: 'deny', classifierEligible: false })
     } finally {
       await rm(workspace, { recursive: true, force: true })
     }
   })
 
-  it('never treats model justification or external text as authorization', () => {
+  it('blocks legacy case: never treats model justification or external text as authorization', () => {
     const artifacts = new ArtifactRegistry()
     const result = assessShell('git push --force origin main', 'bash', roots, artifacts, undefined)
-    expect(result).toMatchObject({ decision: 'ask', classifierEligible: true })
+    expect(result).toMatchObject({ decision: 'deny', classifierEligible: false })
   })
 })
 
@@ -240,31 +236,30 @@ describe('compound command decomposition', () => {
 })
 
 describe('compound command policy', () => {
-  it('does not let operators, read-only verification, or 2>&1 block classification', () => {
+  it('blocks legacy case: does not let operators, read-only verification, or 2>&1 block classification', () => {
     const artifacts = new ArtifactRegistry()
-    // The reported failure: an explicitly authorized deletion never reached the
-    // classifier because the line contained `&&`, `||`, and `2>&1`.
+    // The historical compound syntax is retained as denial-only regression input.
     expect(assessShell('rm -rf /tmp/canary && echo removed && ls -la /tmp 2>&1 || true', 'bash', roots, artifacts, undefined))
-      .toMatchObject({ decision: 'ask', classifierEligible: true })
+      .toMatchObject({ decision: 'deny', classifierEligible: false })
     expect(assessShell('Remove-Item -Recurse /tmp/canary; Write-Output done', 'pwsh', roots, artifacts, undefined))
-      .toMatchObject({ decision: 'ask', classifierEligible: true })
-    expect(assessShell('git status && git diff && ls -la 2>&1', 'bash', roots, artifacts, undefined).decision).toBe('allow')
-    expect(assessShell('pnpm run build && pnpm test 2>&1', 'bash', roots, artifacts, undefined).decision).toBe('allow')
-    expect(assessShell('pnpm test > build.log 2>/dev/null', 'bash', roots, artifacts, undefined).decision).toBe('allow')
+      .toMatchObject({ decision: 'deny', classifierEligible: false })
+    expect(assessShell('git status && git diff && ls -la 2>&1', 'bash', roots, artifacts, undefined).decision).toBe('deny')
+    expect(assessShell('pnpm run build && pnpm test 2>&1', 'bash', roots, artifacts, undefined).decision).toBe('deny')
+    expect(assessShell('pnpm test > build.log 2>/dev/null', 'bash', roots, artifacts, undefined).decision).toBe('deny')
   })
 
   it('keeps every hard-denied target unreachable through compound syntax', () => {
     for (const command of ['echo start && rm -rf / && echo done', 'rm -rf /*', 'ls; rm -rf /']) {
-      expect(hardDenyShellReason(command, 'bash', roots), command).toMatch(/filesystem root/)
+      expect(hardDenyShellReason(command, 'bash', roots), command).toMatch(/Auto blocks shell/)
     }
     for (const command of ['rm -rf ~ && echo done', 'rm -rf ~/* || true', 'echo broken > ~']) {
-      expect(hardDenyShellReason(command, 'bash', roots), command).toMatch(/user home root/)
+      expect(hardDenyShellReason(command, 'bash', roots), command).toMatch(/Auto blocks shell/)
     }
     for (const command of ['rm -rf /safe/dsh/state && echo done', 'echo x > /safe/dsh/config.yaml', 'pnpm test >> /safe/dsh/log']) {
-      expect(hardDenyShellReason(command, 'bash', roots), command).toMatch(/DSH_HOME/)
+      expect(hardDenyShellReason(command, 'bash', roots), command).toMatch(/Auto blocks shell/)
     }
-    expect(hardDenyShellReason('echo broken > /etc/hosts', 'bash', roots)).toMatch(/system or credential-critical/)
-    expect(hardDenyShellReason('timeout 30 rm -rf / && echo done', 'bash', roots)).toMatch(/filesystem root/)
+    expect(hardDenyShellReason('echo broken > /etc/hosts', 'bash', roots)).toMatch(/Auto blocks shell/)
+    expect(hardDenyShellReason('timeout 30 rm -rf / && echo done', 'bash', roots)).toMatch(/Auto blocks shell/)
   })
 
   it('denies hidden destruction so the agent must retry with literal visible targets', () => {
@@ -285,23 +280,23 @@ describe('compound command policy', () => {
         .toMatchObject({ decision: 'deny', classifierEligible: false })
     }
     expect(assessShell('echo generated > $OUTPUT_FILE', 'bash', roots, artifacts, undefined))
-      .toMatchObject({ decision: 'allow', classifierEligible: false })
+      .toMatchObject({ decision: 'deny', classifierEligible: false })
     expect(assessShell('cat payload.b64 | base64 -d | sh', 'bash', roots, artifacts, undefined))
-      .toMatchObject({ decision: 'ask', classifierEligible: true })
+      .toMatchObject({ decision: 'deny', classifierEligible: false })
   })
 
-  it('routes find deletion to authorization while preserving protected-root fuses', () => {
+  it('blocks legacy case: routes find deletion to authorization while preserving protected-root fuses', () => {
     const artifacts = new ArtifactRegistry()
     expect(assessShell('find /tmp/cache -type f -exec rm {} \\;', 'bash', roots, artifacts, undefined))
-      .toMatchObject({ decision: 'ask', classifierEligible: true })
+      .toMatchObject({ decision: 'deny', classifierEligible: false })
     expect(assessShell('find /tmp/cache -type f -delete', 'bash', roots, artifacts, undefined))
-      .toMatchObject({ decision: 'ask', classifierEligible: true })
-    expect(hardDenyShellReason('find / -type f -delete', 'bash', roots)).toMatch(/filesystem root/)
+      .toMatchObject({ decision: 'deny', classifierEligible: false })
+    expect(hardDenyShellReason('find / -type f -delete', 'bash', roots)).toMatch(/Auto blocks shell/)
   })
 
-  it('allows changing the process cwd because the sandbox root does not change', () => {
+  it('blocks legacy case: allows changing the process cwd because the sandbox root does not change', () => {
     const artifacts = new ArtifactRegistry()
     expect(assessShell('cd /etc && ls -la', 'bash', roots, artifacts, undefined))
-      .toMatchObject({ decision: 'allow', classifierEligible: false })
+      .toMatchObject({ decision: 'deny', classifierEligible: false })
   })
 })

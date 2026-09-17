@@ -1,7 +1,7 @@
 {
   "name": "@nanmicoder/dsh-auto-mode",
-  "version": "0.1.9",
-  "description": "Sandbox-first automatic permission policy for DeepSeek Harness",
+  "version": "0.3.0-alpha.1",
+  "description": "Preservation-first, fail-closed permission policy for DeepSeek Harness",
   "author": "程序员阿江(Relakkes) <relakkes@gmail.com>",
   "keywords": [
     "deepseek",
@@ -13,11 +13,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/NanmiCoder/dsh-auto-mode.git"
+    "url": "git+https://github.com/Ranshen1209/dsh-auto-mode.git"
   },
-  "homepage": "https://github.com/NanmiCoder/dsh-auto-mode#readme",
+  "homepage": "https://github.com/Ranshen1209/dsh-auto-mode#readme",
   "bugs": {
-    "url": "https://github.com/NanmiCoder/dsh-auto-mode/issues"
+    "url": "https://github.com/Ranshen1209/dsh-auto-mode/issues"
   },
   "type": "module",
   "main": "./lib/index.js",
@@ -42,7 +42,8 @@
     "README.md",
     "README_ZH.md",
     "DESIGN.md",
-    "compatibility.json"
+    "compatibility.json",
+    "src/upstream-review/LICENSE"
   ],
   "scripts": {
     "clean": "node scripts/clean.mjs",
@@ -67,13 +68,18 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.2",
-    "@deepseek-ai/dsh-client-locale": "0.1.5-rc.1 || 0.1.2-rc.1 || 0.1.2-alpha.5 || 0.1.2-alpha.3 || 0.1.2-alpha.2",
-    "@deepseek-ai/dsh-llm": "0.1.5-rc.1 || 0.1.2-rc.1 || 0.1.2-alpha.5 || 0.1.2-alpha.3 || 0.1.2-alpha.2",
-    "@deepseek-ai/dsh-permission-presets": "0.1.5-rc.1 || 0.1.2-rc.1 || 0.1.2-alpha.5 || 0.1.2-alpha.3 || 0.1.2-alpha.2",
-    "@deepseek-ai/dsh-tools": "0.1.5-rc.1 || 0.1.2-rc.1 || 0.1.2-alpha.5 || 0.1.2-alpha.3 || 0.1.2-alpha.2",
-    "@deepseek-ai/dsh-user-approval": "0.1.5-rc.1 || 0.1.2-rc.1 || 0.1.2-alpha.5 || 0.1.2-alpha.3 || 0.1.2-alpha.2",
-    "@deepseek-ai/dsh-session": "0.1.5-rc.1 || 0.1.2-rc.1 || 0.1.2-alpha.5 || 0.1.2-alpha.3 || 0.1.2-alpha.2",
-    "@deepseek-ai/dsh-system-prompt": "0.1.5-rc.1 || 0.1.2-rc.1 || 0.1.2-alpha.5 || 0.1.2-alpha.3 || 0.1.2-alpha.2"
+    "@deepseek-ai/dsh-client-locale": "0.1.5-rc.1 || 0.1.6-alpha.1.desktop.1",
+    "@deepseek-ai/dsh-llm": "0.1.5-rc.1 || 0.1.6-alpha.1.desktop.1",
+    "@deepseek-ai/dsh-permission-presets": "0.1.5-rc.1 || 0.1.6-alpha.1.desktop.1",
+    "@deepseek-ai/dsh-tools": "0.1.5-rc.1 || 0.1.6-alpha.1.desktop.1",
+    "@deepseek-ai/dsh-user-approval": "0.1.5-rc.1 || 0.1.6-alpha.1.desktop.1",
+    "@deepseek-ai/dsh-session": "0.1.5-rc.1 || 0.1.6-alpha.1.desktop.1",
+    "@deepseek-ai/dsh-system-prompt": "0.1.5-rc.1 || 0.1.6-alpha.1.desktop.1",
+    "@deepseek-ai/dsh-fs": "0.1.5-rc.1 || 0.1.6-alpha.1.desktop.1",
+    "@deepseek-ai/dsh-agent": "0.1.5-rc.1 || 0.1.6-alpha.1.desktop.1",
+    "@deepseek-ai/dsh-agent-instructions": "0.1.5-rc.1 || 0.1.6-alpha.1.desktop.1",
+    "@deepseek-ai/dsh-util-values": "0.1.5-rc.1 || 0.1.6-alpha.1.desktop.1",
+    "@deepseek-ai/dsh-subagent": "0.1.5-rc.1 || 0.1.6-alpha.1.desktop.1"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/cordis": {
@@ -98,6 +104,21 @@
       "optional": true
     },
     "@deepseek-ai/dsh-system-prompt": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-fs": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-agent": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-agent-instructions": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-util-values": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-subagent": {
       "optional": true
     }
   },
@@ -136,7 +157,14 @@
     "tsdown": "0.22.2",
     "typescript": "^5.9.3",
     "vitest": "^4.0.17",
-    "@deepseek-ai/dsh-session": "0.1.5-rc.1"
+    "@deepseek-ai/dsh-session": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-fs": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-fs-local": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-tool-fs": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-agent": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-agent-instructions": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-util-values": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-subagent": "0.1.5-rc.1"
   },
   "packageManager": "pnpm@10.33.0",
   "publishConfig": {

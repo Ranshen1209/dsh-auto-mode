@@ -91,7 +91,7 @@ export function inspectHarness({ runtime, profile, artifactRoot, artifact, expec
     }
   }
   const identities = {}
-  const shared = ['@deepseek-ai/cordis', '@deepseek-ai/dsh-session', '@deepseek-ai/dsh-tools', '@deepseek-ai/dsh-llm', '@deepseek-ai/dsh-permission-presets', '@deepseek-ai/dsh-user-approval', '@deepseek-ai/dsh-system-prompt', '@deepseek-ai/dsh-client-locale']
+  const shared = ['@deepseek-ai/cordis', '@deepseek-ai/dsh-session', '@deepseek-ai/dsh-tools', '@deepseek-ai/dsh-llm', '@deepseek-ai/dsh-permission-presets', '@deepseek-ai/dsh-user-approval', '@deepseek-ai/dsh-system-prompt', '@deepseek-ai/dsh-client-locale', '@deepseek-ai/dsh-fs']
   for (const [label, root] of Object.entries(scopes)) {
     identities[label] = {}
     for (const name of shared) {
